@@ -77,7 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
+  const handleDragLeave = () => {
      setDragOverFolderId(null);
   };
 

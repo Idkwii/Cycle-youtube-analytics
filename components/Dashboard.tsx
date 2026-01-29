@@ -11,10 +11,9 @@ interface DashboardProps {
   selectedChannelId: string | null;
   folders: Folder[];
   isLoading: boolean;
-  refreshData: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ videos, channels, selectedFolderId, selectedChannelId, folders, isLoading, refreshData }) => {
+const Dashboard: React.FC<DashboardProps> = ({ videos, channels, selectedFolderId, selectedChannelId, folders, isLoading }) => {
   const [videoTypeFilter, setVideoTypeFilter] = useState<VideoTypeFilter>('ALL');
   const [sortOption, setSortOption] = useState<SortOption>(SortOption.VIEWS_DESC);
 

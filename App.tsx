@@ -170,7 +170,6 @@ const App: React.FC = () => {
                 selectedChannelId={selectedChannelId}
                 folders={folders}
                 isLoading={isLoading}
-                refreshData={refreshData}
              />
         ) : (
             <div className="flex flex-col items-center justify-center h-full text-slate-500">

@@ -68,7 +68,6 @@ export const fetchRecentVideos = async (channels: Channel[], apiKey: string): Pr
       if (!plData.items) return [];
 
       const videoIds: string[] = [];
-      const videoItemsMap = new Map();
 
       // Filter by date first to reduce ID lookups
       for (const item of plData.items) {
@@ -76,7 +75,6 @@ export const fetchRecentVideos = async (channels: Channel[], apiKey: string): Pr
         if (publishedAt >= oneWeekAgo) {
             const vidId = item.contentDetails.videoId;
             videoIds.push(vidId);
-            videoItemsMap.set(vidId, item);
         }
       }
 
