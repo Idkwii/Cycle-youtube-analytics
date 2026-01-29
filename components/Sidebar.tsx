@@ -69,7 +69,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const handleShareConfig = () => {
     try {
         const data = {
-            apiKey, // Include API Key in the share
+            apiKey, 
             channels,
             folders
         };
@@ -79,7 +79,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         const url = `${window.location.origin}${window.location.pathname}?share=${b64}`;
 
         navigator.clipboard.writeText(url).then(() => {
-            alert("✅ 설정 공유 링크가 복사되었습니다!\n\n이 링크에는 'API 키'가 포함되어 있습니다.\nGoogle Cloud Console에서 'HTTP 리퍼러 제한'을 꼭 설정해주세요.");
+            alert("✅ 팀원 공유용 링크가 복사되었습니다!\n\n팀원들에게 이 링크를 보내주시면,\n현재 등록된 채널, 폴더, API 키 설정이 그대로 적용됩니다.");
         });
     } catch (e) {
         console.error("Share failed", e);
@@ -141,7 +141,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
                 <Key size={16} className="text-slate-700" />
-                <span>API 설정</span>
+                <span>설정 및 API</span>
                 {/* Status Indicator (Only visible when collapsed and key exists) */}
                 {!isApiConfigOpen && apiKey && (
                     <span className="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
@@ -172,15 +172,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {/* Share Button (Config Action) */}
                 <button 
                     onClick={handleShareConfig}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg transition-colors font-medium text-xs"
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg transition-colors font-bold text-xs"
                 >
                     <Share2 size={14} />
-                    설정 및 API키 공유 링크 생성
+                    팀원에게 설정 공유하기
                 </button>
                 
-                <p className="text-[10px] text-slate-400 leading-tight">
-                    * API 키는 브라우저에만 저장됩니다. <br/>
-                    * 공유 링크 생성 시 키가 포함되니 주의하세요.
+                <p className="text-[10px] text-slate-500 leading-tight text-center">
+                    * 위 버튼으로 링크를 복사해서 팀원에게 보내세요.<br/>
+                    (채널/폴더 목록과 API 키가 한 번에 세팅됩니다)
                 </p>
               </div>
           )}
