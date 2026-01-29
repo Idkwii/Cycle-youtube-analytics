@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
-import { AppState, Channel, Folder, Video } from './types';
+import { AppState, Channel, Folder, Video, AnalysisPeriod } from './types';
 import { fetchChannelInfo, fetchRecentVideos } from './services/youtubeService';
 
 const STORAGE_KEY = 'yt_dashboard_state';
@@ -61,6 +60,7 @@ const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>(() => loadInitialState('apiKey', DEFAULT_API_KEY));
   const [channels, setChannels] = useState<Channel[]>(() => loadInitialState('channels', []));
   const [folders, setFolders] = useState<Folder[]>(() => loadInitialState('folders', []));
+  const [period, setPeriod] = useState<AnalysisPeriod>(() => loadInitialState('period', 30));
   
   const [videos, setVideos] = useState<Video[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -72,17 +72,18 @@ const App: React.FC = () => {
       apiKey,
       channels,
       folders,
+      period,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
-  }, [apiKey, channels, folders]);
+  }, [apiKey, channels, folders, period]);
 
 
-  const refreshData = useCallback(async () => {
+  const refreshData = useCallback(async (customPeriod?: AnalysisPeriod) => {
     if (!apiKey || channels.length === 0) return;
     
     setIsLoading(true);
     try {
-      const newVideos = await fetchRecentVideos(channels, apiKey);
+      const newVideos = await fetchRecentVideos(channels, apiKey, customPeriod || period);
       setVideos(newVideos);
     } catch (error: any) {
       alert(`데이터 로드 실패: ${error.message}`);
@@ -90,7 +91,14 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [apiKey, channels]);
+  }, [apiKey, channels, period]);
+
+  // 기간이 변경될 때 자동으로 새로고침
+  useEffect(() => {
+    if (apiKey && channels.length > 0) {
+        refreshData();
+    }
+  }, [period, apiKey]);
 
   useEffect(() => {
       if (sharedData && apiKey && channels.length > 0) {
@@ -150,7 +158,7 @@ const App: React.FC = () => {
           setSelectedFolderId(targetFolderId);
       }
       
-      const newVideos = await fetchRecentVideos([newChannel], apiKey);
+      const newVideos = await fetchRecentVideos([newChannel], apiKey, period);
       setVideos(prev => [...prev, ...newVideos]);
 
     } catch (error: any) {
@@ -189,7 +197,7 @@ const App: React.FC = () => {
         addChannel={addChannel}
         deleteChannel={deleteChannel}
         moveChannel={moveChannel}
-        refreshData={refreshData}
+        refreshData={() => refreshData()}
       />
       <main className="flex-1 ml-80 overflow-y-auto">
         {apiKey ? (
@@ -200,6 +208,8 @@ const App: React.FC = () => {
                 selectedChannelId={selectedChannelId}
                 folders={folders}
                 isLoading={isLoading}
+                period={period}
+                setPeriod={setPeriod}
              />
         ) : (
             <div className="flex flex-col items-center justify-center h-full text-slate-500">

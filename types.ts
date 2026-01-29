@@ -27,6 +27,7 @@ export interface Video {
 }
 
 export type VideoTypeFilter = 'ALL' | 'LONG' | 'SHORT';
+export type AnalysisPeriod = 7 | 30;
 
 export interface AppState {
   apiKey: string;
@@ -35,6 +36,7 @@ export interface AppState {
   videos: Video[];
   isLoading: boolean;
   lastFetched: number | null;
+  period: AnalysisPeriod;
 }
 
 export enum SortOption {

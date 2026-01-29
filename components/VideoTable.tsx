@@ -1,14 +1,15 @@
 import React from 'react';
-import { Video, SortOption } from '../types';
+import { Video, SortOption, AnalysisPeriod } from '../types';
 import { ExternalLink, ThumbsUp, MessageCircle, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface VideoTableProps {
   videos: Video[];
   sortOption: SortOption;
   setSortOption: (opt: SortOption) => void;
+  period: AnalysisPeriod;
 }
 
-const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOption }) => {
+const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOption, period }) => {
 
   const sortedVideos = [...videos].sort((a, b) => {
     switch (sortOption) {
@@ -25,13 +26,8 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
   });
 
   const handleSortClick = (category: 'VIEWS' | 'LIKES' | 'COMMENTS' | 'DATE') => {
-    // Define the pairs
     const desc = SortOption[`${category}_DESC` as keyof typeof SortOption];
     const asc = SortOption[`${category}_ASC` as keyof typeof SortOption];
-
-    // Toggle: If currently DESC, switch to ASC. Otherwise (including if different category), switch to DESC.
-    // However, usually if different category, we want DESC first. 
-    // If currently ASC, switch to DESC.
     if (sortOption === desc) {
         setSortOption(asc);
     } else {
@@ -42,7 +38,6 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
   const SortButton = ({ label, category }: { label: string; category: 'VIEWS' | 'LIKES' | 'COMMENTS' | 'DATE' }) => {
     const isSelected = sortOption.includes(category);
     const isAsc = sortOption.includes('ASC');
-
     return (
       <button
         onClick={() => handleSortClick(category)}
@@ -51,9 +46,7 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
         }`}
       >
         <span>{label}</span>
-        {isSelected && (
-           isAsc ? <ArrowUp size={12} strokeWidth={3} /> : <ArrowDown size={12} strokeWidth={3} />
-        )}
+        {isSelected && (isAsc ? <ArrowUp size={12} strokeWidth={3} /> : <ArrowDown size={12} strokeWidth={3} />)}
       </button>
     );
   };
@@ -61,7 +54,8 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
   if (videos.length === 0) {
     return (
       <div className="p-12 text-center text-slate-500 bg-white rounded-xl border border-slate-200 shadow-sm">
-        <p>선택한 조건에 맞는 최근 7일 내 영상이 없습니다.</p>
+        <p className="text-lg font-medium text-slate-900 mb-2">업로드된 영상이 없습니다</p>
+        <p className="text-sm">선택한 조건에 맞는 최근 {period}일 이내의 영상 데이터를 찾을 수 없습니다.</p>
       </div>
     );
   }
@@ -69,7 +63,7 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-4 items-center justify-between">
-        <h3 className="font-semibold text-slate-800">최근 업로드 영상</h3>
+        <h3 className="font-semibold text-slate-800">최근 업로드 영상 ({period}일)</h3>
         <div className="flex gap-4">
             <SortButton label="조회수" category="VIEWS" />
             <SortButton label="좋아요" category="LIKES" />
