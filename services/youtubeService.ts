@@ -90,9 +90,9 @@ export const fetchRecentVideos = async (channels: Channel[], apiKey: string): Pr
 
       return vData.items.map((item: any) => {
         const durationSec = parseDuration(item.contentDetails.duration);
-        // We define "Shorts" as <= 60 seconds. YouTube technically classifies vertical <60s as shorts,
-        // but API doesn't have an explicit "isShort" flag in snippet. Duration is the best proxy.
-        const isShort = durationSec <= 60; 
+        // We define "Shorts" as <= 180 seconds (3 minutes) as YouTube updated the policy.
+        // API doesn't have an explicit "isShort" flag in snippet. Duration is the best proxy.
+        const isShort = durationSec <= 180; 
 
         return {
           id: item.id,
