@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -6,7 +7,6 @@ import { fetchChannelInfo, fetchRecentVideos } from './services/youtubeService';
 
 const STORAGE_KEY = 'yt_dashboard_state';
 
-// 환경 변수 안전하게 가져오기 (Vite 환경)
 const getEnvApiKey = () => {
   try {
     // @ts-ignore
@@ -18,7 +18,6 @@ const getEnvApiKey = () => {
 
 const DEFAULT_API_KEY = getEnvApiKey();
 
-// URL 공유 데이터 파싱 (Base64 Unicode safe)
 const getSharedData = (): Partial<AppState> | null => {
   if (typeof window === 'undefined') return null;
   const params = new URLSearchParams(window.location.search);
@@ -27,7 +26,6 @@ const getSharedData = (): Partial<AppState> | null => {
   if (!shareParam) return null;
   
   try {
-    // Unicode string decoding from Base64
     const jsonStr = decodeURIComponent(escape(window.atob(shareParam)));
     return JSON.parse(jsonStr);
   } catch (e) {
@@ -36,24 +34,17 @@ const getSharedData = (): Partial<AppState> | null => {
   }
 };
 
-// 앱 시작 시 한 번만 실행하여 공유된 설정을 가져옴
 const sharedData = getSharedData();
 
-// Helper to safely load initial state from localStorage
-// 우선순위: 공유된 데이터 > 로컬스토리지 > 기본값(환경변수 등)
 const loadInitialState = <T,>(key: keyof AppState, defaultValue: T): T => {
-  // 1. URL 공유 데이터가 있으면 최우선 사용
   if (sharedData && sharedData[key] !== undefined) {
       return sharedData[key] as T;
   }
 
-  // 2. 로컬 스토리지 확인
   try {
     const storedState = localStorage.getItem(STORAGE_KEY);
     if (storedState) {
       const parsed = JSON.parse(storedState);
-      
-      // API Key 특수 처리: 저장된 키가 비어있고 기본 환경변수가 있으면 환경변수 사용
       if (key === 'apiKey' && (!parsed[key] || parsed[key] === '') && defaultValue) {
           return defaultValue;
       }
@@ -63,12 +54,10 @@ const loadInitialState = <T,>(key: keyof AppState, defaultValue: T): T => {
     console.error("Failed to load state", e);
   }
 
-  // 3. 기본값 반환
   return defaultValue;
 };
 
 const App: React.FC = () => {
-  // --- State (with Lazy Initialization) ---
   const [apiKey, setApiKey] = useState<string>(() => loadInitialState('apiKey', DEFAULT_API_KEY));
   const [channels, setChannels] = useState<Channel[]>(() => loadInitialState('channels', []));
   const [folders, setFolders] = useState<Folder[]>(() => loadInitialState('folders', []));
@@ -78,8 +67,6 @@ const App: React.FC = () => {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
 
-  // --- Persistence (Save only) ---
-  // 공유된 링크로 들어왔더라도, 사용자가 수정하면 로컬에 저장되도록 함
   useEffect(() => {
     const stateToSave: Partial<AppState> = {
       apiKey,
@@ -90,8 +77,6 @@ const App: React.FC = () => {
   }, [apiKey, channels, folders]);
 
 
-  // --- Actions ---
-
   const refreshData = useCallback(async () => {
     if (!apiKey || channels.length === 0) return;
     
@@ -99,24 +84,22 @@ const App: React.FC = () => {
     try {
       const newVideos = await fetchRecentVideos(channels, apiKey);
       setVideos(newVideos);
-    } catch (error) {
-      alert("영상 데이터를 가져오는데 실패했습니다. API 키나 할당량을 확인해주세요.");
+    } catch (error: any) {
+      alert(`데이터 로드 실패: ${error.message}`);
       console.error(error);
     } finally {
       setIsLoading(false);
     }
   }, [apiKey, channels]);
 
-  // 공유 링크로 접속 시 자동 데이터 로드 (API 키와 채널이 있을 경우)
   useEffect(() => {
       if (sharedData && apiKey && channels.length > 0) {
-          // 약간의 지연을 주어 UI 렌더링 후 실행
           const timer = setTimeout(() => {
               refreshData();
           }, 500);
           return () => clearTimeout(timer);
       }
-  }, []); // Mount 시 1회 체크 (sharedData는 컴포넌트 외부 변수라 의존성 불필요하지만, 로직상 최초 1회만)
+  }, []);
 
   const addFolder = (name: string) => {
     const newFolder: Folder = {
@@ -128,35 +111,27 @@ const App: React.FC = () => {
 
   const addChannel = async (identifier: string, folderId: string) => {
     if (!apiKey) {
-      alert("먼저 YouTube API 키를 입력해주세요.");
+      alert("먼저 YouTube API 키를 설정 섹션에 입력해주세요.");
       return;
     }
     
-    // Check duplicates
-    if (channels.some(c => c.handle === identifier || c.id === identifier)) {
-        alert("이미 존재하는 채널일 수 있습니다.");
-        // Proceeding anyway but user should know
-    }
-
     try {
       const info = await fetchChannelInfo(identifier, apiKey);
       
       if (channels.some(c => c.id === info.id)) {
-        alert("이미 추가된 채널입니다!");
+        alert(`'${info.title}' 채널은 이미 추가되어 있습니다.`);
         return;
       }
 
-      // Handle Folder Assignment
       let targetFolderId = folderId;
       let currentFolders = [...folders];
 
-      // If no folder ID is provided (or empty), handle auto-creation or default assignment
       if (!targetFolderId) {
           if (currentFolders.length === 0) {
               const newFolderId = `f-${Date.now()}`;
               const newFolder = { id: newFolderId, name: '기본 폴더' };
               currentFolders = [newFolder];
-              setFolders(currentFolders); // Update state
+              setFolders(currentFolders);
               targetFolderId = newFolderId;
           } else {
               targetFolderId = currentFolders[0].id;
@@ -171,19 +146,16 @@ const App: React.FC = () => {
       const updatedChannels = [...channels, newChannel];
       setChannels(updatedChannels);
       
-      // Auto-select the folder if none was selected, so the user sees the new channel
       if (!selectedFolderId) {
           setSelectedFolderId(targetFolderId);
-          setSelectedChannelId(null);
       }
       
-      // Fetch videos for this new channel immediately
       const newVideos = await fetchRecentVideos([newChannel], apiKey);
       setVideos(prev => [...prev, ...newVideos]);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("채널을 찾을 수 없습니다. 핸들/ID 또는 API 키를 확인해주세요.");
+      alert(`채널 추가 실패: ${error.message}\n\n도움말: 핸들은 @를 포함해 입력(예: @YouTube)하거나, 검색어를 정확히 입력해주세요.`);
     }
   };
 
@@ -209,7 +181,7 @@ const App: React.FC = () => {
         selectedFolderId={selectedFolderId}
         setSelectedFolderId={(id) => {
             setSelectedFolderId(id);
-            setSelectedChannelId(null); // Reset channel selection when folder changes
+            setSelectedChannelId(null);
         }}
         selectedChannelId={selectedChannelId}
         setSelectedChannelId={setSelectedChannelId}
@@ -231,11 +203,21 @@ const App: React.FC = () => {
              />
         ) : (
             <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                <p className="text-lg font-medium mb-2">Cycle Youtube Analytics에 오신 것을 환영합니다</p>
-                <p className="text-sm">시작하려면 사이드바에 YouTube API 키를 입력해주세요.</p>
-                {sharedData && (
-                    <p className="text-xs text-blue-500 mt-2">공유된 설정을 불러왔으나 API 키가 없습니다.</p>
-                )}
+                <div className="bg-white p-12 rounded-3xl shadow-xl border border-slate-200 text-center max-w-lg">
+                    <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
+                    </div>
+                    <h2 className="text-2xl font-bold text-slate-900 mb-4">API 키가 설정되지 않았습니다</h2>
+                    <p className="text-slate-600 mb-8 leading-relaxed">
+                        YouTube 데이터를 불러오기 위해 Google Cloud Console에서 발급받은 <br/>
+                        <strong>YouTube Data API v3</strong> 키가 필요합니다. <br/>
+                        사이드바의 '설정 및 API' 메뉴에 키를 입력해주세요.
+                    </p>
+                    <div className="flex flex-col gap-2 text-left bg-slate-50 p-4 rounded-xl text-xs text-slate-500 border border-slate-200">
+                        <p>• API 키를 이미 입력했는데도 이 메시지가 보인다면 페이지를 새로고침 해주세요.</p>
+                        <p>• 공유 링크로 접속했다면 보낸 사람이 API 키를 포함했는지 확인해주세요.</p>
+                    </div>
+                </div>
             </div>
         )}
        
