@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -5,6 +6,7 @@ import { AppState, Channel, Folder, Video, AnalysisPeriod } from './types';
 import { fetchChannelInfo, fetchRecentVideos } from './services/youtubeService';
 
 const STORAGE_KEY = 'yt_dashboard_state';
+const VIDEO_CACHE_KEY = 'yt_dashboard_videos';
 
 const getEnvApiKey = () => {
   try {
@@ -17,149 +19,125 @@ const getEnvApiKey = () => {
 
 const DEFAULT_API_KEY = getEnvApiKey();
 
-const getSharedData = (): Partial<AppState> | null => {
-  if (typeof window === 'undefined') return null;
-  const params = new URLSearchParams(window.location.search);
-  const shareParam = params.get('share');
-  
-  if (!shareParam) return null;
-  
-  try {
-    const jsonStr = decodeURIComponent(escape(window.atob(shareParam)));
-    return JSON.parse(jsonStr);
-  } catch (e) {
-    console.error("Failed to parse shared configuration", e);
-    return null;
-  }
-};
-
-const sharedData = getSharedData();
-
-const loadInitialState = <T,>(key: keyof AppState, defaultValue: T): T => {
-  if (sharedData && sharedData[key] !== undefined) {
-      return sharedData[key] as T;
-  }
-
-  try {
-    const storedState = localStorage.getItem(STORAGE_KEY);
-    if (storedState) {
-      const parsed = JSON.parse(storedState);
-      if (key === 'apiKey' && (!parsed[key] || parsed[key] === '') && defaultValue) {
-          return defaultValue;
-      }
-      return parsed[key] !== undefined ? parsed[key] : defaultValue;
-    }
-  } catch (e) {
-    console.error("Failed to load state", e);
-  }
-
-  return defaultValue;
-};
-
 const App: React.FC = () => {
-  const [apiKey, setApiKey] = useState<string>(() => loadInitialState('apiKey', DEFAULT_API_KEY));
-  const [channels, setChannels] = useState<Channel[]>(() => loadInitialState('channels', []));
-  const [folders, setFolders] = useState<Folder[]>(() => loadInitialState('folders', []));
-  const [period, setPeriod] = useState<AnalysisPeriod>(() => loadInitialState('period', 30));
+  // 기본 상태 로드
+  const [apiKey, setApiKey] = useState<string>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.apiKey || DEFAULT_API_KEY;
+    }
+    return DEFAULT_API_KEY;
+  });
+
+  const [channels, setChannels] = useState<Channel[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved).channels || [] : [];
+  });
+
+  const [folders, setFolders] = useState<Folder[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved).folders || [] : [];
+  });
+
+  const [period, setPeriod] = useState<AnalysisPeriod>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved).period || 30 : 30;
+  });
+
+  // 영상 데이터 및 메타데이터 (캐시 적용)
+  const [videos, setVideos] = useState<Video[]>(() => {
+    const saved = localStorage.getItem(VIDEO_CACHE_KEY);
+    return saved ? JSON.parse(saved).data || [] : [];
+  });
   
-  const [videos, setVideos] = useState<Video[]>([]);
+  const [lastFetched, setLastFetched] = useState<number | null>(() => {
+    const saved = localStorage.getItem(VIDEO_CACHE_KEY);
+    return saved ? JSON.parse(saved).timestamp || null : null;
+  });
+
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
 
+  // 설정값 저장
   useEffect(() => {
-    const stateToSave: Partial<AppState> = {
-      apiKey,
-      channels,
-      folders,
-      period,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ apiKey, channels, folders, period }));
   }, [apiKey, channels, folders, period]);
 
+  // 영상 데이터 캐시 저장
+  useEffect(() => {
+    if (videos.length > 0) {
+        localStorage.setItem(VIDEO_CACHE_KEY, JSON.stringify({ data: videos, timestamp: lastFetched }));
+    }
+  }, [videos, lastFetched]);
 
-  const refreshData = useCallback(async (customPeriod?: AnalysisPeriod) => {
-    if (!apiKey) {
-        alert("API 키가 설정되지 않았습니다.");
+  const refreshData = useCallback(async (customPeriod?: AnalysisPeriod, force = false) => {
+    if (!apiKey) return;
+    if (channels.length === 0) return;
+
+    // 강제 새로고침이 아니고, 최근 30분 이내에 불러온 적이 있다면 생략 (할당량 보호)
+    const now = Date.now();
+    if (!force && lastFetched && (now - lastFetched < 30 * 60 * 1000) && !customPeriod) {
+        console.log("Using cached data (fetched less than 30 mins ago)");
         return;
     }
-    if (channels.length === 0) return;
     
     setIsLoading(true);
     try {
-      console.log(`Fetching data for ${channels.length} channels for last ${customPeriod || period} days...`);
-      const newVideos = await fetchRecentVideos(channels, apiKey, customPeriod || period);
+      const targetPeriod = customPeriod || period;
+      const newVideos = await fetchRecentVideos(channels, apiKey, targetPeriod);
       setVideos(newVideos);
-      console.log(`Successfully loaded ${newVideos.length} videos.`);
+      setLastFetched(Date.now());
     } catch (error: any) {
-      alert(`데이터 로드 중 오류 발생:\n${error.message}`);
-      console.error("Refresh Data Error:", error);
+      alert(error.message);
+      console.error(error);
     } finally {
       setIsLoading(false);
     }
-  }, [apiKey, channels, period]);
+  }, [apiKey, channels, period, lastFetched]);
 
+  // 앱 시작 시 또는 기간 변경 시 데이터 로드
   useEffect(() => {
     if (apiKey && channels.length > 0) {
-        refreshData();
+        // 이미 영상이 있고 마지막 업데이트가 1시간 이내라면 자동 새로고침 안함
+        const shouldAutoRefresh = !lastFetched || (Date.now() - lastFetched > 60 * 60 * 1000);
+        if (shouldAutoRefresh) {
+            refreshData();
+        }
     }
-  }, [period, apiKey, channels.length]); // channels.length 추가하여 채널 추가 시 자동 로드 유도
+  }, [period]);
 
   const addFolder = (name: string) => {
-    const newFolder: Folder = {
-      id: `f-${Date.now()}`,
-      name,
-    };
-    setFolders([...folders, newFolder]);
+    setFolders([...folders, { id: `f-${Date.now()}`, name }]);
   };
 
   const addChannel = async (identifier: string, folderId: string) => {
-    if (!apiKey) {
-      alert("먼저 YouTube API 키를 설정 섹션에 입력해주세요.");
-      return;
-    }
+    if (!apiKey) { alert("API 키를 먼저 입력해주세요."); return; }
     
+    setIsLoading(true);
     try {
-      setIsLoading(true);
       const info = await fetchChannelInfo(identifier, apiKey);
-      
       if (channels.some(c => c.id === info.id)) {
-        alert(`'${info.title}' 채널은 이미 추가되어 있습니다.`);
+        alert("이미 등록된 채널입니다.");
         return;
       }
 
-      let targetFolderId = folderId;
-      let currentFolders = [...folders];
-
-      if (!targetFolderId) {
-          if (currentFolders.length === 0) {
-              const newFolderId = `f-${Date.now()}`;
-              const newFolder = { id: newFolderId, name: '기본 폴더' };
-              currentFolders = [newFolder];
-              setFolders(currentFolders);
-              targetFolderId = newFolderId;
-          } else {
-              targetFolderId = currentFolders[0].id;
-          }
+      let targetId = folderId || (folders.length > 0 ? folders[0].id : null);
+      if (!targetId) {
+          const newF = { id: `f-${Date.now()}`, name: '기본 폴더' };
+          setFolders([newF]);
+          targetId = newF.id;
       }
 
-      const newChannel: Channel = {
-        ...info,
-        folderId: targetFolderId,
-      };
-      
+      const newChannel = { ...info, folderId: targetId };
       setChannels(prev => [...prev, newChannel]);
       
-      if (!selectedFolderId) {
-          setSelectedFolderId(targetFolderId);
-      }
-      
-      // 채널 하나 추가 시 전체 새로고침 대신 효율적 추가 (단, 복잡성을 위해 전체 새로고침 트리거)
-      // useEffect의 channels.length 의존성에 의해 자동 실행됨
-
+      // 새 채널 추가 시에는 즉시 데이터 한 번 가져오기
+      const newV = await fetchRecentVideos([newChannel], apiKey, period);
+      setVideos(prev => [...prev, ...newV]);
     } catch (error: any) {
-      console.error(error);
-      alert(`채널 추가 실패: ${error.message}`);
+      alert(error.message);
     } finally {
       setIsLoading(false);
     }
@@ -168,59 +146,39 @@ const App: React.FC = () => {
   const deleteChannel = (id: string) => {
     setChannels(channels.filter(c => c.id !== id));
     setVideos(videos.filter(v => v.channelId !== id));
-    if (selectedChannelId === id) setSelectedChannelId(null);
   };
 
   const moveChannel = (channelId: string, targetFolderId: string) => {
-    setChannels(prev => prev.map(c => 
-      c.id === channelId ? { ...c, folderId: targetFolderId } : c
-    ));
+    setChannels(prev => prev.map(c => c.id === channelId ? { ...c, folderId: targetFolderId } : c));
   };
 
   return (
     <div className="flex h-screen bg-slate-50">
       <Sidebar 
-        apiKey={apiKey}
-        setApiKey={setApiKey}
-        folders={folders}
-        channels={channels}
+        apiKey={apiKey} setApiKey={setApiKey}
+        folders={folders} channels={channels}
         selectedFolderId={selectedFolderId}
-        setSelectedFolderId={(id) => {
-            setSelectedFolderId(id);
-            setSelectedChannelId(null);
-        }}
+        setSelectedFolderId={(id) => { setSelectedFolderId(id); setSelectedChannelId(null); }}
         selectedChannelId={selectedChannelId}
         setSelectedChannelId={setSelectedChannelId}
-        addFolder={addFolder}
-        addChannel={addChannel}
-        deleteChannel={deleteChannel}
-        moveChannel={moveChannel}
-        refreshData={() => refreshData()}
+        addFolder={addFolder} addChannel={addChannel}
+        deleteChannel={deleteChannel} moveChannel={moveChannel}
+        refreshData={() => refreshData(undefined, true)} // 버튼 클릭 시 강제 새로고침
       />
       <main className="flex-1 ml-80 overflow-y-auto">
         {apiKey ? (
              <Dashboard 
-                videos={videos}
-                channels={channels}
+                videos={videos} channels={channels}
                 selectedFolderId={selectedFolderId}
                 selectedChannelId={selectedChannelId}
-                folders={folders}
-                isLoading={isLoading}
-                period={period}
-                setPeriod={setPeriod}
+                folders={folders} isLoading={isLoading}
+                period={period} setPeriod={setPeriod}
              />
         ) : (
-            <div className="flex flex-col items-center justify-center h-full text-slate-500">
+            <div className="flex items-center justify-center h-full text-slate-500">
                 <div className="bg-white p-12 rounded-3xl shadow-xl border border-slate-200 text-center max-w-lg">
-                    <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                        <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
-                    </div>
-                    <h2 className="text-2xl font-bold text-slate-900 mb-4">API 키가 설정되지 않았습니다</h2>
-                    <p className="text-slate-600 mb-8 leading-relaxed">
-                        YouTube 데이터를 불러오기 위해 발급받은 <br/>
-                        <strong>YouTube Data API v3</strong> 키가 필요합니다. <br/>
-                        사이드바의 '설정 및 API' 메뉴에 키를 입력해주세요.
-                    </p>
+                    <h2 className="text-2xl font-bold text-slate-900 mb-4">API 키가 필요합니다</h2>
+                    <p className="text-slate-600 mb-4">사이드바 설정에서 API 키를 입력해 주세요.</p>
                 </div>
             </div>
         )}
