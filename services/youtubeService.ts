@@ -22,6 +22,9 @@ const handleApiError = async (response: Response) => {
       if (message.includes('quota') || message.includes('limit')) {
         throw new Error(`[할당량 초과] 오늘 사용할 수 있는 YouTube API 한도를 모두 소진했습니다. 내일 오후 4시(KST)에 초기화되거나 다른 API 키를 사용해야 합니다.`);
       }
+      if (message.includes('referer') || message.includes('blocked')) {
+        throw new Error(`[도메인 차단됨] 현재 도메인에서의 요청이 거부되었습니다.\nGoogle Cloud Console > API 및 서비스 > 사용자 인증 정보 > API 키 설정에서\n'웹사이트 제한'에 현재 도메인 주소를 추가하세요.`);
+      }
       throw new Error(`[접근 거부] ${message}`);
     }
     throw new Error(message);

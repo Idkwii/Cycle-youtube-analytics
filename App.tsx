@@ -6,7 +6,7 @@ import MyAnalyticsDashboard from './components/MyAnalyticsDashboard'; // New Com
 import { Channel, Folder, Video, AnalysisPeriod, AnalyticsDataPoint } from './types';
 import { fetchChannelInfo, fetchRecentVideos, fetchAnalyticsReport } from './services/youtubeService';
 import LZString from 'lz-string';
-import { CheckCircle2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Settings } from 'lucide-react';
 
 const STORAGE_KEY = 'yt_dashboard_state';
 const VIDEO_CACHE_KEY = 'yt_dashboard_videos';
@@ -19,11 +19,8 @@ const CONST_API_KEY = 'AIzaSyA3JRkSp_eMJ3oWKhqDwIbY5IVbb99Uobc';
 
 /**
  * [필수] 내 채널 분석을 위해 필요한 OAuth 2.0 Client ID입니다.
- * 1. .env 파일에 VITE_GOOGLE_CLIENT_ID=... 로 설정하거나
- * 2. 아래 문자열에 직접 붙여넣으세요.
  */
-// @ts-ignore
-const OAUTH_CLIENT_ID = import.meta.env?.VITE_GOOGLE_CLIENT_ID || 'YOUR_CLIENT_ID_HERE.apps.googleusercontent.com';
+const DEFAULT_OAUTH_CLIENT_ID = 'YOUR_CLIENT_ID_HERE.apps.googleusercontent.com';
 
 const getInitialApiKey = () => {
   if (CONST_API_KEY) return CONST_API_KEY;
@@ -35,6 +32,15 @@ const getInitialApiKey = () => {
   }
 };
 
+const getInitialClientId = () => {
+    try {
+        // @ts-ignore
+        const envId = import.meta.env?.VITE_GOOGLE_CLIENT_ID;
+        if (envId) return envId;
+    } catch {}
+    return DEFAULT_OAUTH_CLIENT_ID;
+};
+
 interface Toast {
   id: number;
   message: string;
@@ -43,6 +49,8 @@ interface Toast {
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>(getInitialApiKey());
+  const [oauthClientId, setOauthClientId] = useState<string>(getInitialClientId());
+  
   const [channels, setChannels] = useState<Channel[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [period, setPeriod] = useState<AnalysisPeriod>(30);
@@ -75,10 +83,10 @@ const App: React.FC = () => {
   // --- Google OAuth Init ---
   useEffect(() => {
     // @ts-ignore
-    if (window.google && OAUTH_CLIENT_ID && !OAUTH_CLIENT_ID.includes('YOUR_CLIENT_ID')) {
+    if (window.google && oauthClientId && !oauthClientId.includes('YOUR_CLIENT_ID')) {
         // @ts-ignore
         window.google.accounts.oauth2.initTokenClient({
-            client_id: OAUTH_CLIENT_ID,
+            client_id: oauthClientId,
             scope: 'https://www.googleapis.com/auth/yt-analytics.readonly https://www.googleapis.com/auth/youtube.readonly',
             callback: (response: any) => {
                 if (response.access_token) {
@@ -90,16 +98,17 @@ const App: React.FC = () => {
             },
         });
     }
-  }, [showToast]);
+  }, [showToast, oauthClientId]);
 
   const handleLogin = () => {
-    if (!OAUTH_CLIENT_ID || OAUTH_CLIENT_ID.includes('YOUR_CLIENT_ID')) {
-        showToast("코드에 OAuth Client ID를 설정해야 합니다.", 'error');
+    if (!oauthClientId || oauthClientId.includes('YOUR_CLIENT_ID')) {
+        showToast("설정에서 OAuth Client ID를 입력해주세요.", 'error');
+        // 설정 메뉴를 열도록 유도하면 좋겠지만, 일단 메시지로 안내
         return;
     }
     // @ts-ignore
     const client = window.google?.accounts?.oauth2?.initTokenClient({
-        client_id: OAUTH_CLIENT_ID,
+        client_id: oauthClientId,
         scope: 'https://www.googleapis.com/auth/yt-analytics.readonly https://www.googleapis.com/auth/youtube.readonly',
         callback: (response: any) => {
             if (response.access_token) {
@@ -132,6 +141,7 @@ const App: React.FC = () => {
     const savedVideos = localStorage.getItem(VIDEO_CACHE_KEY);
 
     let initialApiKey = getInitialApiKey();
+    let initialClientId = getInitialClientId();
     let initialChannels: Channel[] = [];
     let initialFolders: Folder[] = [];
     let initialPeriod: AnalysisPeriod = 30;
@@ -140,6 +150,7 @@ const App: React.FC = () => {
     if (savedState) {
       const parsed = JSON.parse(savedState);
       initialApiKey = CONST_API_KEY || parsed.apiKey || initialApiKey;
+      initialClientId = parsed.oauthClientId || initialClientId;
       initialChannels = parsed.channels || [];
       initialFolders = parsed.folders || [];
       initialPeriod = parsed.period || 30;
@@ -184,6 +195,7 @@ const App: React.FC = () => {
     }
 
     setApiKey(initialApiKey);
+    setOauthClientId(initialClientId);
     setChannels(initialChannels);
     setFolders(initialFolders);
     setPeriod(initialPeriod);
@@ -201,8 +213,8 @@ const App: React.FC = () => {
   }, [showToast]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ apiKey, channels, folders, period }));
-  }, [apiKey, channels, folders, period]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ apiKey, oauthClientId, channels, folders, period }));
+  }, [apiKey, oauthClientId, channels, folders, period]);
 
   const getShareLink = useCallback(() => {
      try {
@@ -319,9 +331,9 @@ const App: React.FC = () => {
         refreshData={() => refreshData(undefined, true)}
         getShareLink={getShareLink}
         showToast={showToast}
-        onLoginClick={handleLogin} // NEW
-        currentView={currentView} // NEW
-        setCurrentView={setCurrentView} // NEW
+        onLoginClick={handleLogin}
+        currentView={currentView}
+        setCurrentView={setCurrentView}
       />
       <main className="flex-1 ml-80 overflow-y-auto">
         {currentView === 'DASHBOARD' ? (
@@ -332,6 +344,7 @@ const App: React.FC = () => {
                 folders={folders} isLoading={isLoading}
                 period={period} setPeriod={setPeriod}
                 apiKey={apiKey} setApiKey={setApiKey}
+                oauthClientId={oauthClientId} setOauthClientId={setOauthClientId} // NEW
             />
         ) : (
             <div className="relative h-full">
@@ -355,6 +368,10 @@ const App: React.FC = () => {
                         <p className="text-sm text-slate-400 max-w-sm text-center">
                             * 수익, 구독자 증감 등 민감한 데이터는<br/>본인 인증 후에만 볼 수 있습니다.
                         </p>
+                        <div className="mt-8 p-4 bg-slate-100 rounded-lg text-xs text-slate-500 max-w-sm text-center">
+                            로그인이 안 되나요?<br/>
+                            우측 하단 <Settings size={12} className="inline"/> 아이콘을 눌러 <strong>OAuth Client ID</strong>를 입력하세요.
+                        </div>
                     </div>
                 ) : (
                     <MyAnalyticsDashboard data={analyticsData} period={period} />

@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Video, SortOption, Folder, Channel, AnalysisPeriod } from '../types';
 import VideoTable from './VideoTable';
 import ChannelStats from './ChannelStats';
-import { Eye, ThumbsUp, MessageCircle, Film, Settings, PlusCircle } from 'lucide-react';
+import { Eye, ThumbsUp, MessageCircle, Film, Settings, PlusCircle, HelpCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 interface DashboardProps {
@@ -17,6 +17,8 @@ interface DashboardProps {
   setPeriod: (period: AnalysisPeriod) => void;
   apiKey: string;
   setApiKey: (key: string) => void;
+  oauthClientId?: string;
+  setOauthClientId?: (id: string) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
@@ -29,7 +31,9 @@ const Dashboard: React.FC<DashboardProps> = ({
     period,
     setPeriod,
     apiKey,
-    setApiKey
+    setApiKey,
+    oauthClientId,
+    setOauthClientId
 }) => {
   const [sortOption, setSortOption] = useState<SortOption>(SortOption.VIEWS_DESC);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -102,31 +106,61 @@ const Dashboard: React.FC<DashboardProps> = ({
   // 채널이 하나도 없을 때 보여줄 빈 화면
   if (channels.length === 0) {
       return (
-          <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+          <div className="flex flex-col items-center justify-center h-full p-8 text-center relative">
               <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mb-6">
                   <PlusCircle size={40} />
               </div>
               <h2 className="text-2xl font-bold text-slate-900 mb-2">분석할 채널이 없습니다</h2>
-              <p className="text-slate-500 max-w-sm">사이드바에서 채널 핸들(@handle) 또는 ID를 입력하여 성과 분석을 시작해 보세요.</p>
+              <p className="text-slate-500 max-w-sm mb-8">사이드바에서 채널 핸들(@handle) 또는 ID를 입력하여 성과 분석을 시작해 보세요.</p>
               
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 max-w-md text-left flex gap-3">
+                  <HelpCircle className="text-yellow-600 flex-shrink-0" size={20} />
+                  <div>
+                      <h4 className="text-sm font-bold text-yellow-800 mb-1">기존 데이터가 사라졌나요?</h4>
+                      <p className="text-xs text-yellow-700 leading-relaxed">
+                          배포 주소(URL)가 변경되면 보안상 이전 데이터가 보이지 않습니다.<br/>
+                          <strong>이전 주소로 접속</strong>하여 사이드바 하단의 <strong>[공유]</strong> 버튼을 누른 뒤, 생성된 링크를 이 주소에서 열면 데이터가 복구됩니다.
+                      </p>
+                  </div>
+              </div>
+
               <div className="mt-20 opacity-30 flex flex-col items-center">
                   <Settings size={20} className="mb-2" />
                   <p className="text-[10px] text-slate-400">관리자용 설정은 우측 하단에 숨겨져 있습니다.</p>
               </div>
 
               {/* 비밀 설정 아이콘 유지 */}
-              <div className="fixed bottom-4 right-8 flex flex-col items-end">
+              <div className="fixed bottom-4 right-8 flex flex-col items-end z-50">
                 {isSettingsOpen && (
-                    <div className="bg-white p-4 rounded-2xl shadow-2xl border border-slate-200 mb-2 w-72 animate-in slide-in-from-bottom-4">
-                        <p className="text-xs font-bold text-slate-900 mb-2">API 키 관리</p>
-                        <input 
-                            type="password" 
-                            value={apiKey} 
-                            onChange={(e) => setApiKey(e.target.value)}
-                            placeholder="API 키 변경"
-                            className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg mb-2 focus:ring-2 focus:ring-blue-600 outline-none"
-                        />
-                        <p className="text-[10px] text-slate-400">키를 변경하면 즉시 반영됩니다.</p>
+                    <div className="bg-white p-4 rounded-2xl shadow-2xl border border-slate-200 mb-2 w-80 animate-in slide-in-from-bottom-4">
+                        <p className="text-xs font-bold text-slate-900 mb-2">설정 및 API 키 관리</p>
+                        
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 mb-1 block">YouTube Data API Key (Public)</label>
+                                <input 
+                                    type="password" 
+                                    value={apiKey} 
+                                    onChange={(e) => setApiKey(e.target.value)}
+                                    placeholder="AIza..."
+                                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                                />
+                            </div>
+                            
+                            {setOauthClientId && (
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 mb-1 block">OAuth 2.0 Client ID (Private)</label>
+                                    <input 
+                                        type="text" 
+                                        value={oauthClientId || ''} 
+                                        onChange={(e) => setOauthClientId(e.target.value)}
+                                        placeholder="...apps.googleusercontent.com"
+                                        className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-2">변경 시 자동 저장 및 즉시 반영됩니다.</p>
                     </div>
                 )}
                 <button 
@@ -218,18 +252,37 @@ const Dashboard: React.FC<DashboardProps> = ({
       />
       
       {/* 관리자용 비밀 설정창 */}
-      <div className="fixed bottom-4 right-8 flex flex-col items-end">
+      <div className="fixed bottom-4 right-8 flex flex-col items-end z-50">
           {isSettingsOpen && (
-              <div className="bg-white p-4 rounded-2xl shadow-2xl border border-slate-200 mb-2 w-72 animate-in slide-in-from-bottom-4">
-                  <p className="text-xs font-bold text-slate-900 mb-2">API 키 관리</p>
-                  <input 
-                      type="password" 
-                      value={apiKey} 
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="API 키 변경"
-                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg mb-2 focus:ring-2 focus:ring-blue-600 outline-none"
-                  />
-                  <p className="text-[10px] text-slate-400">키를 변경하면 즉시 반영됩니다.</p>
+              <div className="bg-white p-4 rounded-2xl shadow-2xl border border-slate-200 mb-2 w-80 animate-in slide-in-from-bottom-4">
+                  <p className="text-xs font-bold text-slate-900 mb-2">설정 및 API 키 관리</p>
+                  
+                  <div className="space-y-3">
+                      <div>
+                          <label className="text-[10px] font-bold text-slate-500 mb-1 block">YouTube Data API Key (Public)</label>
+                          <input 
+                              type="password" 
+                              value={apiKey} 
+                              onChange={(e) => setApiKey(e.target.value)}
+                              placeholder="AIza..."
+                              className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                          />
+                      </div>
+                      
+                      {setOauthClientId && (
+                          <div>
+                              <label className="text-[10px] font-bold text-slate-500 mb-1 block">OAuth 2.0 Client ID (Private)</label>
+                              <input 
+                                  type="text" 
+                                  value={oauthClientId || ''} 
+                                  onChange={(e) => setOauthClientId(e.target.value)}
+                                  placeholder="...apps.googleusercontent.com"
+                                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                              />
+                          </div>
+                      )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-2">변경 시 자동 저장 및 즉시 반영됩니다.</p>
               </div>
           )}
           <button 
