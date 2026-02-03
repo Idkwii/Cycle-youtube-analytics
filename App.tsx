@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import { Channel, Folder, Video, AnalysisPeriod } from './types';
 import { fetchChannelInfo, fetchRecentVideos } from './services/youtubeService';
 import LZString from 'lz-string';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 const STORAGE_KEY = 'yt_dashboard_state';
 const VIDEO_CACHE_KEY = 'yt_dashboard_videos';
@@ -25,6 +26,13 @@ const getInitialApiKey = () => {
   }
 };
 
+// 토스트 메시지 타입 정의
+interface Toast {
+  id: number;
+  message: string;
+  type: 'success' | 'error';
+}
+
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>(getInitialApiKey());
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -36,6 +44,17 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  
+  // 토스트 상태 관리
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3000);
+  }, []);
 
   // 1. 초기화: 로컬 스토리지 및 URL 공유 파라미터 확인
   useEffect(() => {
@@ -46,6 +65,7 @@ const App: React.FC = () => {
     let initialChannels: Channel[] = [];
     let initialFolders: Folder[] = [];
     let initialPeriod: AnalysisPeriod = 30;
+    let dataLoadedFromShare = false;
 
     // 로컬 스토리지 로드
     if (savedState) {
@@ -56,7 +76,7 @@ const App: React.FC = () => {
       initialPeriod = parsed.period || 30;
     }
 
-    // URL 파라미터(공유 데이터) 로드 - URL이 스토리지보다 우선순위 높음
+    // URL 파라미터(공유 데이터) 로드
     const params = new URLSearchParams(window.location.search);
     const shareData = params.get('share');
     if (shareData) {
@@ -89,9 +109,10 @@ const App: React.FC = () => {
                 if (data.channels) initialChannels = data.channels;
                 if (data.folders) initialFolders = data.folders;
             }
+            dataLoadedFromShare = true;
         }
         
-        // [핵심] 데이터를 다 로드했으면, URL을 깨끗하게 청소합니다! (사용자가 긴 URL을 보지 않게 함)
+        // [핵심] URL 세탁 (Clean URL)
         window.history.replaceState({}, '', window.location.pathname);
         
       } catch (e) {
@@ -110,14 +131,19 @@ const App: React.FC = () => {
       setLastFetched(parsed.timestamp || null);
       setDataPeriod(parsed.period || null);
     }
-  }, []);
 
-  // 2. 상태 변경 시 로컬 스토리지만 동기화 (URL 자동 업데이트 제거)
+    // 공유된 데이터로 로드되었음을 알림
+    if (dataLoadedFromShare) {
+        // UI 렌더링 후 알림을 띄우기 위해 약간의 지연
+        setTimeout(() => showToast("공유된 대시보드 설정을 불러왔습니다.", 'success'), 500);
+    }
+  }, [showToast]);
+
+  // 2. 상태 변경 시 로컬 스토리지만 동기화
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ apiKey, channels, folders, period }));
   }, [apiKey, channels, folders, period]);
 
-  // 공유 링크 생성 함수 (Sidebar로 전달)
   const getShareLink = useCallback(() => {
      try {
         const minifiedData: any = {
@@ -161,12 +187,14 @@ const App: React.FC = () => {
       setVideos(newVideos);
       setDataPeriod(targetPeriod);
       setLastFetched(Date.now());
+      showToast("데이터 업데이트 완료", 'success');
     } catch (error: any) {
       console.error(error.message);
+      showToast("데이터 업데이트 실패: " + error.message, 'error');
     } finally {
       setIsLoading(false);
     }
-  }, [apiKey, channels, period, lastFetched]);
+  }, [apiKey, channels, period, lastFetched, showToast]);
 
   useEffect(() => {
     if (apiKey && channels.length > 0) {
@@ -182,14 +210,14 @@ const App: React.FC = () => {
 
   const addChannel = async (identifier: string, folderId: string) => {
     if (!apiKey) {
-      alert("코드 내부에 API 키가 설정되지 않았습니다.");
+      showToast("코드 내부에 API 키가 설정되지 않았습니다.", 'error');
       return;
     }
     setIsLoading(true);
     try {
       const info = await fetchChannelInfo(identifier, apiKey);
       if (channels.some(c => c.id === info.id)) {
-        alert("이미 등록된 채널입니다.");
+        showToast("이미 등록된 채널입니다.", 'error');
         return;
       }
       let targetId = folderId || (folders.length > 0 ? folders[0].id : null);
@@ -202,8 +230,9 @@ const App: React.FC = () => {
       setChannels(prev => [...prev, newChannel]);
       const newV = await fetchRecentVideos([newChannel], apiKey, period);
       setVideos(prev => [...prev, ...newV]);
+      showToast(`'${info.title}' 채널이 추가되었습니다.`, 'success');
     } catch (error: any) {
-      alert(error.message);
+      showToast(error.message, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -212,6 +241,7 @@ const App: React.FC = () => {
   const deleteChannel = (id: string) => {
     setChannels(channels.filter(c => c.id !== id));
     setVideos(videos.filter(v => v.channelId !== id));
+    showToast("채널이 삭제되었습니다.", 'success');
   };
 
   const moveChannel = (channelId: string, targetFolderId: string) => {
@@ -219,7 +249,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen bg-slate-50 relative">
       <Sidebar 
         apiKey={apiKey} setApiKey={setApiKey}
         folders={folders} channels={channels}
@@ -231,6 +261,7 @@ const App: React.FC = () => {
         deleteChannel={deleteChannel} moveChannel={moveChannel}
         refreshData={() => refreshData(undefined, true)}
         getShareLink={getShareLink}
+        showToast={showToast}
       />
       <main className="flex-1 ml-80 overflow-y-auto">
         <Dashboard 
@@ -242,6 +273,21 @@ const App: React.FC = () => {
           apiKey={apiKey} setApiKey={setApiKey}
         />
       </main>
+
+      {/* Toast Notification Container */}
+      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex flex-col gap-2 z-50 pointer-events-none">
+        {toasts.map(toast => (
+            <div 
+                key={toast.id} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border animate-in slide-in-from-bottom-5 fade-in duration-300 ${
+                    toast.type === 'success' ? 'bg-slate-900 text-white border-slate-800' : 'bg-red-50 text-red-600 border-red-200'
+                }`}
+            >
+                {toast.type === 'success' ? <CheckCircle2 size={18} className="text-green-400" /> : <AlertCircle size={18} />}
+                <span className="text-sm font-medium">{toast.message}</span>
+            </div>
+        ))}
+      </div>
     </div>
   );
 };

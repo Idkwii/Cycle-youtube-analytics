@@ -202,7 +202,14 @@ const Dashboard: React.FC<DashboardProps> = ({
          </div>
       )}
 
-      <VideoTable videos={filteredVideos} sortOption={sortOption} setSortOption={setSortOption} period={period} />
+      {/* 중요: avgViews를 전달하여 테이블에서 '성과 분석'을 할 수 있게 함 */}
+      <VideoTable 
+        videos={filteredVideos} 
+        sortOption={sortOption} 
+        setSortOption={setSortOption} 
+        period={period}
+        avgViews={stats.avgViews} 
+      />
       
       {/* 관리자용 비밀 설정창 */}
       <div className="fixed bottom-4 right-8 flex flex-col items-end">

@@ -1,15 +1,17 @@
+
 import React from 'react';
 import { Video, SortOption, AnalysisPeriod } from '../types';
-import { ExternalLink, ThumbsUp, MessageCircle, ArrowUp, ArrowDown } from 'lucide-react';
+import { ExternalLink, ThumbsUp, MessageCircle, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface VideoTableProps {
   videos: Video[];
   sortOption: SortOption;
   setSortOption: (opt: SortOption) => void;
   period: AnalysisPeriod;
+  avgViews?: number; // 채널/폴더 평균 조회수 (선택적)
 }
 
-const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOption, period }) => {
+const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOption, period, avgViews }) => {
 
   const sortedVideos = [...videos].sort((a, b) => {
     switch (sortOption) {
@@ -51,6 +53,49 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
     );
   };
 
+  // 참여율 계산 함수 (좋아요+댓글 / 조회수)
+  const getEngagementRate = (video: Video) => {
+    if (video.viewCount === 0) return 0;
+    return ((video.likeCount + video.commentCount) / video.viewCount) * 100;
+  };
+
+  // 성과 지수 렌더링 (평균 대비)
+  const renderPerformance = (views: number, avg: number) => {
+    if (!avg) return <span className="text-slate-400">-</span>;
+    const ratio = views / avg;
+    const percent = Math.round((ratio - 1) * 100); // 0이면 평균, 100이면 2배
+    
+    if (ratio >= 1.5) {
+        return (
+            <div className="flex items-center gap-1 text-green-600 font-bold bg-green-50 px-2 py-1 rounded text-xs w-fit ml-auto">
+                <TrendingUp size={14} />
+                <span>{ratio.toFixed(1)}x</span>
+            </div>
+        );
+    } else if (ratio >= 1.0) {
+        return (
+            <div className="flex items-center gap-1 text-blue-600 font-bold bg-blue-50 px-2 py-1 rounded text-xs w-fit ml-auto">
+                <ArrowUp size={14} />
+                <span>{ratio.toFixed(1)}x</span>
+            </div>
+        );
+    } else if (ratio >= 0.7) {
+        return (
+             <div className="flex items-center gap-1 text-slate-500 bg-slate-100 px-2 py-1 rounded text-xs w-fit ml-auto">
+                <Minus size={14} />
+                <span>Avg</span>
+            </div>
+        );
+    } else {
+        return (
+            <div className="flex items-center gap-1 text-red-500 bg-red-50 px-2 py-1 rounded text-xs w-fit ml-auto">
+                <ArrowDown size={14} />
+                <span>{Math.abs(percent)}%↓</span>
+            </div>
+        );
+    }
+  };
+
   if (videos.length === 0) {
     return (
       <div className="p-12 text-center text-slate-500 bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -75,23 +120,33 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
         <table className="w-full text-left">
           <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
             <tr>
-              <th className="px-6 py-3 font-semibold">영상</th>
+              <th className="px-6 py-3 font-semibold w-[40%]">영상</th>
               <th className="px-6 py-3 font-semibold">게시일</th>
+              <th className="px-6 py-3 font-semibold text-right">성과 지표</th>
               <th className="px-6 py-3 font-semibold text-right">조회수</th>
-              <th className="px-6 py-3 font-semibold text-right">좋아요</th>
-              <th className="px-6 py-3 font-semibold text-right">댓글</th>
+              <th className="px-6 py-3 font-semibold text-right">참여율</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {sortedVideos.map((video) => (
+            {sortedVideos.map((video) => {
+              const engRate = getEngagementRate(video);
+              return (
               <tr key={video.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-4">
-                    <div className="relative flex-shrink-0 w-24 h-14 bg-slate-200 rounded overflow-hidden">
+                    <div className="relative flex-shrink-0 w-24 h-14 bg-slate-200 rounded overflow-hidden group">
                       <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
                       {video.isShort && (
                         <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded">쇼츠</span>
                       )}
+                      <a 
+                        href={`https://www.youtube.com/watch?v=${video.id}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      >
+                         <ExternalLink className="text-white drop-shadow-md" size={20} />
+                      </a>
                     </div>
                     <div className="min-w-0 max-w-xs">
                         <div className="text-xs text-slate-500 mb-0.5">{video.channelTitle}</div>
@@ -99,10 +154,9 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
                             href={`https://www.youtube.com/watch?v=${video.id}`} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="text-sm font-medium text-slate-900 hover:text-blue-600 truncate block flex items-center gap-1"
+                            className="text-sm font-medium text-slate-900 hover:text-blue-600 truncate block"
                         >
-                            <span className="truncate">{video.title}</span>
-                            <ExternalLink size={12} className="flex-shrink-0 opacity-50" />
+                            {video.title}
                         </a>
                     </div>
                   </div>
@@ -111,23 +165,25 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
                   {new Date(video.publishedAt).toLocaleDateString('ko-KR')}
                   <div className="text-xs text-slate-400">{new Date(video.publishedAt).toLocaleTimeString('ko-KR', {hour: '2-digit', minute:'2-digit'})}</div>
                 </td>
+                <td className="px-6 py-4 text-right">
+                    {avgViews && renderPerformance(video.viewCount, avgViews)}
+                </td>
                 <td className="px-6 py-4 text-right font-medium text-slate-700">
                   {video.viewCount.toLocaleString()}
                 </td>
-                <td className="px-6 py-4 text-right font-medium text-slate-700">
-                  <div className="flex items-center justify-end gap-1.5 text-rose-600">
-                    <ThumbsUp size={14} />
-                    {video.likeCount.toLocaleString()}
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-right font-medium text-slate-700">
-                   <div className="flex items-center justify-end gap-1.5 text-blue-600">
-                    <MessageCircle size={14} />
-                    {video.commentCount.toLocaleString()}
-                  </div>
+                <td className="px-6 py-4 text-right">
+                    <div className="flex flex-col items-end gap-1">
+                        <span className={`font-bold text-sm ${engRate > 5 ? 'text-green-600' : engRate > 2 ? 'text-blue-600' : 'text-slate-600'}`}>
+                            {engRate.toFixed(1)}%
+                        </span>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                            <span className="flex items-center gap-0.5"><ThumbsUp size={10} /> {video.likeCount.toLocaleString()}</span>
+                            <span className="flex items-center gap-0.5"><MessageCircle size={10} /> {video.commentCount.toLocaleString()}</span>
+                        </div>
+                    </div>
                 </td>
               </tr>
-            ))}
+            )})}
           </tbody>
         </table>
       </div>

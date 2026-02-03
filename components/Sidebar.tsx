@@ -17,7 +17,8 @@ interface SidebarProps {
   deleteChannel: (id: string) => void;
   moveChannel: (channelId: string, folderId: string) => void;
   refreshData: () => void;
-  getShareLink: () => string; // 공유 링크 생성 함수
+  getShareLink: () => string;
+  showToast: (msg: string, type?: 'success' | 'error') => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -34,7 +35,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   deleteChannel,
   moveChannel,
   refreshData,
-  getShareLink
+  getShareLink,
+  showToast
 }) => {
   const [newFolderInput, setNewFolderInput] = useState('');
   const [newChannelInput, setNewChannelInput] = useState('');
@@ -68,19 +70,18 @@ const Sidebar: React.FC<SidebarProps> = ({
     setIsSharing(true);
     const longUrl = getShareLink();
     
-    // 1. 먼저 긴 URL을 클립보드에 복사해둡니다 (실패 대비)
+    // 1. 긴 URL을 클립보드에 복사
     try {
         await navigator.clipboard.writeText(longUrl);
     } catch(e) { /* ignore */ }
 
     // 2. 무료 단축 URL API 시도 (TinyURL)
-    // 주의: CORS 문제로 브라우저에 따라 막힐 수 있음
     try {
         const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
         if (response.ok) {
             const shortUrl = await response.text();
             await navigator.clipboard.writeText(shortUrl);
-            alert(`✅ 단축 URL이 복사되었습니다!\n\n${shortUrl}`);
+            showToast("단축 URL이 복사되었습니다!", 'success');
             setIsSharing(false);
             return;
         }
@@ -88,12 +89,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         console.warn("URL shortening failed, using long URL", e);
     }
 
-    // 3. 단축 실패 시 긴 URL 사용 안내
-    alert(
-        "✅ 공유 링크가 복사되었습니다!\n\n" +
-        "서버가 없는 앱이라 데이터가 포함되어 링크가 다소 깁니다.\n" +
-        "하지만 데이터베이스 없이도 영구적으로 작동하는 안전한 링크입니다."
-    );
+    // 3. 단축 실패 시에도 안심 메시지 전달
+    showToast("공유 링크가 복사되었습니다! (접속 시 주소는 자동으로 숨겨집니다)", 'success');
     setIsSharing(false);
   };
 
@@ -197,7 +194,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     return (
                         <div key={folder.id} className={`rounded-xl border transition-all ${isFolderSelected ? 'bg-slate-50 border-blue-200' : 'bg-white border-slate-100'}`}>
                             <button
-                                onClick={() => setSelectedFolderId(folder.id)}
+                                onClick={() => setSelectedFolderId(isFolderSelected ? null : folder.id)}
                                 onDragOver={(e) => handleDragOver(e, folder.id)}
                                 onDrop={(e) => handleDrop(e, folder.id)}
                                 className={`w-full text-left px-3 py-3 rounded-lg text-sm font-bold flex items-center gap-3 transition-colors ${
