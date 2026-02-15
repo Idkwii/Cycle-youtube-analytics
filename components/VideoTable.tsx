@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Video, SortOption, AnalysisPeriod } from '../types';
-import { ExternalLink, ThumbsUp, MessageCircle, ArrowUp, ArrowDown, TrendingUp, Minus, Clock } from 'lucide-react';
+import { ExternalLink, ThumbsUp, MessageCircle, ArrowUp, ArrowDown, TrendingUp, Minus, Clock, Trophy } from 'lucide-react';
 
 interface VideoTableProps {
   videos: Video[];
@@ -104,6 +104,20 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
     }
   };
 
+  const renderRank = (index: number) => {
+      const rank = index + 1;
+      if (rank === 1) {
+          return <div className="w-6 h-6 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center font-bold text-xs mx-auto">1</div>;
+      }
+      if (rank === 2) {
+          return <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs mx-auto">2</div>;
+      }
+      if (rank === 3) {
+          return <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs mx-auto">3</div>;
+      }
+      return <span className="text-slate-400 font-medium text-xs">{rank}</span>;
+  };
+
   if (videos.length === 0) {
     return (
       <div className="p-12 text-center text-slate-500 bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -128,6 +142,7 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
         <table className="w-full text-left">
           <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
             <tr>
+              <th className="px-4 py-3 font-semibold text-center w-12">#</th>
               <th className="px-6 py-3 font-semibold w-[40%]">영상</th>
               <th className="px-6 py-3 font-semibold text-right">성과 지표</th>
               <th className="px-6 py-3 font-semibold text-right">VPH (시간당)</th>
@@ -136,11 +151,14 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {sortedVideos.map((video) => {
+            {sortedVideos.map((video, index) => {
               const engRate = getEngagementRate(video);
               const vph = getVPH(video);
               return (
               <tr key={video.id} className="hover:bg-slate-50 transition-colors">
+                <td className="px-4 py-4 text-center">
+                    {renderRank(index)}
+                </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-4">
                     <div className="relative flex-shrink-0 w-24 h-14 bg-slate-200 rounded overflow-hidden group">

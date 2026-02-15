@@ -151,8 +151,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* vidIQ Style Quick Stats Bar */}
-      <ChannelStats videos={scopeVideos} channel={currentChannel} />
+      {/* vidIQ Style Quick Stats Bar - filteredVideos(롱폼만) 전달 */}
+      <ChannelStats videos={filteredVideos} channel={currentChannel} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="영상 수" value={stats.count.toLocaleString()} icon={Film} color="bg-slate-600 text-slate-600" />
@@ -195,7 +195,6 @@ const Dashboard: React.FC<DashboardProps> = ({
          </div>
       )}
 
-      {/* 중요: avgViews를 전달하여 테이블에서 '성과 분석'을 할 수 있게 함 */}
       <VideoTable 
         videos={filteredVideos} 
         sortOption={sortOption} 
