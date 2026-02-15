@@ -221,6 +221,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                                 src={channel.thumbnail || DEFAULT_THUMBNAIL} 
                                                 alt={channel.title} 
                                                 className="w-6 h-6 rounded-full bg-slate-200 object-cover" 
+                                                onError={(e) => { e.currentTarget.src = DEFAULT_THUMBNAIL; }}
                                             />
                                             <p className={`text-xs font-semibold truncate flex-1 ${selectedChannelId === channel.id ? 'text-blue-800' : 'text-slate-800'}`}>{channel.title}</p>
                                             <button onClick={(e) => { e.stopPropagation(); deleteChannel(channel.id); }} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100">

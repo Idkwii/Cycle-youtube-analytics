@@ -99,7 +99,7 @@ const App: React.FC = () => {
                     id: c[0],
                     folderId: c[1],
                     title: c[2],
-                    thumbnail: '', 
+                    thumbnail: c[3] || '', // 썸네일 복원
                     uploadsPlaylistId: c[0].replace(/^UC/, 'UU'),
                     handle: ''
                 }));
@@ -141,7 +141,8 @@ const App: React.FC = () => {
      try {
         const minifiedData: any = {
             f: folders.map(f => [f.id, f.name]),
-            c: channels.map(c => [c.id, c.folderId, c.title])
+            // ID, FolderID, Title, Thumbnail 순서로 저장
+            c: channels.map(c => [c.id, c.folderId, c.title, c.thumbnail])
         };
         if (!CONST_API_KEY && apiKey) {
             minifiedData.k = apiKey;
