@@ -200,7 +200,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         sortOption={sortOption} 
         setSortOption={setSortOption} 
         period={period}
-        avgViews={stats.avgViews} 
       />
       
       {isLoading && (

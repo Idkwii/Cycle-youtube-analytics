@@ -1,17 +1,16 @@
 
 import React from 'react';
 import { Video, SortOption, AnalysisPeriod } from '../types';
-import { ExternalLink, ThumbsUp, MessageCircle, ArrowUp, ArrowDown, TrendingUp, Minus, Clock, Trophy } from 'lucide-react';
+import { ExternalLink, ThumbsUp, MessageCircle, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface VideoTableProps {
   videos: Video[];
   sortOption: SortOption;
   setSortOption: (opt: SortOption) => void;
   period: AnalysisPeriod;
-  avgViews?: number; // 채널/폴더 평균 조회수 (선택적)
 }
 
-const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOption, period, avgViews }) => {
+const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOption, period }) => {
 
   const sortedVideos = [...videos].sort((a, b) => {
     switch (sortOption) {
@@ -59,51 +58,6 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
     return ((video.likeCount + video.commentCount) / video.viewCount) * 100;
   };
 
-  // VPH (Views Per Hour) 계산
-  const getVPH = (video: Video) => {
-    const published = new Date(video.publishedAt).getTime();
-    const now = new Date().getTime();
-    const hoursSince = Math.max((now - published) / (1000 * 60 * 60), 1); // 최소 1시간
-    return Math.round(video.viewCount / hoursSince);
-  };
-
-  // 성과 지수 렌더링 (평균 대비)
-  const renderPerformance = (views: number, avg: number) => {
-    if (!avg) return <span className="text-slate-400">-</span>;
-    const ratio = views / avg;
-    const percent = Math.round((ratio - 1) * 100); // 0이면 평균, 100이면 2배
-    
-    if (ratio >= 1.5) {
-        return (
-            <div className="flex items-center gap-1 text-green-600 font-bold bg-green-50 px-2 py-1 rounded text-xs w-fit ml-auto">
-                <TrendingUp size={14} />
-                <span>{ratio.toFixed(1)}x</span>
-            </div>
-        );
-    } else if (ratio >= 1.0) {
-        return (
-            <div className="flex items-center gap-1 text-blue-600 font-bold bg-blue-50 px-2 py-1 rounded text-xs w-fit ml-auto">
-                <ArrowUp size={14} />
-                <span>{ratio.toFixed(1)}x</span>
-            </div>
-        );
-    } else if (ratio >= 0.7) {
-        return (
-             <div className="flex items-center gap-1 text-slate-500 bg-slate-100 px-2 py-1 rounded text-xs w-fit ml-auto">
-                <Minus size={14} />
-                <span>Avg</span>
-            </div>
-        );
-    } else {
-        return (
-            <div className="flex items-center gap-1 text-red-500 bg-red-50 px-2 py-1 rounded text-xs w-fit ml-auto">
-                <ArrowDown size={14} />
-                <span>{Math.abs(percent)}%↓</span>
-            </div>
-        );
-    }
-  };
-
   const renderRank = (index: number) => {
       const rank = index + 1;
       if (rank === 1) {
@@ -143,9 +97,7 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
           <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
             <tr>
               <th className="px-4 py-3 font-semibold text-center w-12">#</th>
-              <th className="px-6 py-3 font-semibold w-[40%]">영상</th>
-              <th className="px-6 py-3 font-semibold text-right">성과 지표</th>
-              <th className="px-6 py-3 font-semibold text-right">VPH (시간당)</th>
+              <th className="px-6 py-3 font-semibold w-[50%]">영상</th>
               <th className="px-6 py-3 font-semibold text-right">조회수</th>
               <th className="px-6 py-3 font-semibold text-right">참여율</th>
             </tr>
@@ -153,7 +105,6 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
           <tbody className="divide-y divide-slate-100">
             {sortedVideos.map((video, index) => {
               const engRate = getEngagementRate(video);
-              const vph = getVPH(video);
               return (
               <tr key={video.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-4 py-4 text-center">
@@ -190,16 +141,6 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
                         </a>
                     </div>
                   </div>
-                </td>
-                <td className="px-6 py-4 text-right">
-                    {avgViews && renderPerformance(video.viewCount, avgViews)}
-                </td>
-                <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-1 text-slate-600 font-bold text-sm">
-                        <Clock size={12} className="text-slate-400" />
-                        {vph.toLocaleString()}
-                    </div>
-                    <p className="text-[10px] text-slate-400">views/hour</p>
                 </td>
                 <td className="px-6 py-4 text-right font-medium text-slate-700">
                   {video.viewCount.toLocaleString()}
