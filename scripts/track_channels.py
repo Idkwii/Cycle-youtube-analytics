@@ -4,6 +4,16 @@ import re
 import time
 import requests
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Optional
+
+# ── .env 파일 로드 (로컬 실행 시) ─────────────────────────
+_env_path = Path(__file__).parent.parent / ".env"
+if _env_path.exists():
+    for line in _env_path.read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
 
 # ── 환경변수 ──────────────────────────────────────────────
 YOUTUBE_API_KEY     = os.environ["YOUTUBE_API_KEY"]
@@ -103,15 +113,10 @@ def get_video_stats(video_ids: list[str]) -> dict:
 
 # ── Notion API ────────────────────────────────────────────
 
-def page_exists(video_id: str, snapshot_date: str) -> bool:
-    """오늘 이미 저장된 레코드인지 확인 (중복 방지)"""
+def get_existing_page_id(video_id: str) -> Optional[str]:
+    """Video ID로 기존 레코드 조회 → page_id 반환 (없으면 None)"""
     payload = {
-        "filter": {
-            "and": [
-                {"property": "Video ID",     "rich_text": {"equals": video_id}},
-                {"property": "스냅샷 날짜", "date":      {"equals": snapshot_date}},
-            ]
-        },
+        "filter": {"property": "Video ID", "rich_text": {"equals": video_id}},
         "page_size": 1,
     }
     res = requests.post(
@@ -120,41 +125,60 @@ def page_exists(video_id: str, snapshot_date: str) -> bool:
         json=payload,
         timeout=30,
     )
-    return len(res.json().get("results", [])) > 0
+    results = res.json().get("results", [])
+    return results[0]["id"] if results else None
 
 
-def create_notion_page(video: dict, channel_title: str,
-                       performance_idx: float, snapshot_date: str) -> bool:
-    """노션 DB에 영상 레코드 생성"""
-    props = {
-        "영상 제목":    {"title":     [{"text": {"content": video["title"][:2000]}}]},
-        "채널":         {"select":    {"name": channel_title}},
-        "업로드일":     {"date":      {"start": video["publishedAt"][:10]}},
-        "스냅샷 날짜":  {"date":      {"start": snapshot_date}},
-        "조회수":       {"number":    video["stats"]["viewCount"]},
-        "좋아요":       {"number":    video["stats"]["likeCount"]},
-        "댓글":         {"number":    video["stats"]["commentCount"]},
-        "퍼포먼스 지수":{"number":    round(performance_idx, 1)},
-        "쇼츠 여부":    {"checkbox":  video["stats"]["isShort"]},
-        "영상 URL":     {"url":       f"https://youtube.com/watch?v={video['id']}"},
-        "Video ID":     {"rich_text": [{"text": {"content": video["id"]}}]},
+def build_props(video: dict, channel_title: str,
+                performance_idx: float, today: str) -> dict:
+    """노션 properties 딕셔너리 생성"""
+    return {
+        "영상 제목":       {"title":     [{"text": {"content": video["title"][:2000]}}]},
+        "채널":            {"select":    {"name": channel_title}},
+        "업로드일":        {"date":      {"start": video["publishedAt"][:10]}},
+        "마지막 업데이트": {"date":      {"start": today}},
+        "조회수":          {"number":    video["stats"]["viewCount"]},
+        "좋아요":          {"number":    video["stats"]["likeCount"]},
+        "댓글":            {"number":    video["stats"]["commentCount"]},
+        "퍼포먼스 지수":   {"number":    round(performance_idx, 1)},
+        "급상승 여부":     {"checkbox":  performance_idx >= 200},
+        "URL":             {"url":       f"https://youtube.com/watch?v={video['id']}"},
+        "Video ID":        {"rich_text": [{"text": {"content": video["id"]}}]},
     }
 
-    body: dict = {"parent": {"database_id": NOTION_DATABASE_ID}, "properties": props}
-    if video["thumbnail"]:
-        body["cover"] = {"type": "external", "external": {"url": video["thumbnail"]}}
+
+def upsert_notion_page(video: dict, channel_title: str,
+                       performance_idx: float, today: str) -> str:
+    """기존 레코드면 업데이트, 없으면 새로 생성. 'created'/'updated'/'failed' 반환"""
+    props = build_props(video, channel_title, performance_idx, today)
+    page_id = get_existing_page_id(video["id"])
 
     for attempt in range(3):
-        res = requests.post(f"{NOTION_BASE}/pages", headers=NOTION_HEADERS,
-                            json=body, timeout=30)
+        if page_id:
+            res = requests.patch(
+                f"{NOTION_BASE}/pages/{page_id}",
+                headers=NOTION_HEADERS,
+                json={"properties": props},
+                timeout=30,
+            )
+        else:
+            body: dict = {
+                "parent": {"database_id": NOTION_DATABASE_ID},
+                "properties": props,
+            }
+            if video["thumbnail"]:
+                body["cover"] = {"type": "external", "external": {"url": video["thumbnail"]}}
+            res = requests.post(f"{NOTION_BASE}/pages", headers=NOTION_HEADERS,
+                                json=body, timeout=30)
+
         if res.status_code == 200:
-            return True
-        if res.status_code == 429:          # rate limit
+            return "updated" if page_id else "created"
+        if res.status_code == 429:
             time.sleep(2 ** attempt)
             continue
         print(f"  [Notion 오류] {res.status_code} {res.text[:200]}")
-        return False
-    return False
+        return "failed"
+    return "failed"
 
 
 # ── 메인 ─────────────────────────────────────────────────
@@ -163,11 +187,11 @@ def main():
     with open("channels.json", encoding="utf-8") as f:
         channels = json.load(f)
 
-    snapshot_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    total_videos = saved = skipped = 0
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    total_videos = created = updated = failed = 0
 
     print(f"{'='*50}")
-    print(f"경쟁사 유튜브 트래킹 시작: {snapshot_date}")
+    print(f"경쟁사 유튜브 트래킹 시작: {today}")
     print(f"채널 수: {len(channels)}개 | 기간: 최근 {DAYS_BACK}일")
     print(f"{'='*50}")
 
@@ -179,31 +203,40 @@ def main():
             print(f"  → 최근 {DAYS_BACK}일 내 업로드 없음")
             continue
 
-        # 통계 일괄 조회
         stats = get_video_stats([v["id"] for v in videos])
         for v in videos:
             v["stats"] = stats.get(v["id"],
                 {"viewCount": 0, "likeCount": 0, "commentCount": 0, "isShort": False})
 
-        # 채널 평균 조회수 계산
+        videos = [v for v in videos if not v["stats"]["isShort"]]
+        if not videos:
+            print(f"  → 숏츠만 있어서 스킵")
+            continue
+
         views = [v["stats"]["viewCount"] for v in videos if v["stats"]["viewCount"] > 0]
         avg   = sum(views) / len(views) if views else 1
 
-        # 노션 저장
+        ch_created = ch_updated = ch_failed = 0
         for v in videos:
             total_videos += 1
-            if page_exists(v["id"], snapshot_date):
-                skipped += 1
-                continue
-            perf = v["stats"]["viewCount"] / avg * 100
-            if create_notion_page(v, ch["title"], perf, snapshot_date):
-                saved += 1
-            time.sleep(0.35)  # Notion rate limit 방지
+            perf   = v["stats"]["viewCount"] / avg * 100
+            result = upsert_notion_page(v, ch["title"], perf, today)
+            if result == "created":
+                created += 1
+                ch_created += 1
+            elif result == "updated":
+                updated += 1
+                ch_updated += 1
+            else:
+                failed += 1
+                ch_failed += 1
+            time.sleep(0.35)
 
-        print(f"  → {len(videos)}개 영상 | 저장 {saved}건 | 스킵(중복) {skipped}건")
+        print(f"  → {len(videos)}개 영상 | 신규 {ch_created}건 | 업데이트 {ch_updated}건" +
+              (f" | 실패 {ch_failed}건" if ch_failed else ""))
 
     print(f"\n{'='*50}")
-    print(f"완료: 총 {total_videos}개 영상 | 저장 {saved}건 | 스킵 {skipped}건")
+    print(f"완료: 총 {total_videos}개 | 신규 {created}건 | 업데이트 {updated}건 | 실패 {failed}건")
     print(f"{'='*50}")
 
 
