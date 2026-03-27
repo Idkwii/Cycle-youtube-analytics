@@ -167,7 +167,7 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-4">
                     <div className="relative flex-shrink-0 w-24 h-14 bg-slate-200 rounded overflow-hidden group">
-                      <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
+                      <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       {video.isShort && (
                         <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded">쇼츠</span>
                       )}
