@@ -17,6 +17,8 @@ interface DashboardProps {
   setPeriod: (period: AnalysisPeriod) => void;
   apiKey: string;
   setApiKey: (key: string) => void;
+  hiddenVideoIds: string[];
+  setHiddenVideoIds: React.Dispatch<React.SetStateAction<string[]>>;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
@@ -29,20 +31,23 @@ const Dashboard: React.FC<DashboardProps> = ({
     period,
     setPeriod,
     apiKey,
-    setApiKey
+    setApiKey,
+    hiddenVideoIds,
+    setHiddenVideoIds
 }) => {
   const [sortOption, setSortOption] = useState<SortOption>(SortOption.VIEWS_DESC);
 
   const scopeVideos = useMemo(() => {
+    const visibleVideos = videos.filter(v => !hiddenVideoIds.includes(v.id));
     if (selectedChannelId) {
-        return videos.filter(v => v.channelId === selectedChannelId);
+        return visibleVideos.filter(v => v.channelId === selectedChannelId);
     }
     if (selectedFolderId) {
         const folderChannelIds = channels.filter(c => c.folderId === selectedFolderId).map(c => c.id);
-        return videos.filter(v => folderChannelIds.includes(v.channelId));
+        return visibleVideos.filter(v => folderChannelIds.includes(v.channelId));
     }
-    return videos;
-  }, [videos, selectedFolderId, selectedChannelId, channels]);
+    return visibleVideos;
+  }, [videos, selectedFolderId, selectedChannelId, channels, hiddenVideoIds]);
 
   const filteredVideos = useMemo(() => {
     return scopeVideos.filter(v => !v.isShort);
@@ -200,6 +205,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         sortOption={sortOption} 
         setSortOption={setSortOption} 
         period={period}
+        onHideVideo={(id) => setHiddenVideoIds(prev => [...prev, id])}
       />
       
       {isLoading && (

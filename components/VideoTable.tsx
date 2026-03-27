@@ -1,16 +1,35 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Video, SortOption, AnalysisPeriod } from '../types';
-import { ExternalLink, ThumbsUp, MessageCircle, ArrowUp, ArrowDown } from 'lucide-react';
+import { ExternalLink, ThumbsUp, MessageCircle, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Minus, EyeOff } from 'lucide-react';
 
 interface VideoTableProps {
   videos: Video[];
   sortOption: SortOption;
   setSortOption: (opt: SortOption) => void;
   period: AnalysisPeriod;
+  onHideVideo: (id: string) => void;
 }
 
-const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOption, period }) => {
+const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOption, period, onHideVideo }) => {
+
+  // 채널별 평균 조회수 계산
+  const channelAverages = useMemo(() => {
+    const stats: Record<string, { total: number; count: number }> = {};
+    videos.forEach(v => {
+        if (!stats[v.channelId]) {
+            stats[v.channelId] = { total: 0, count: 0 };
+        }
+        stats[v.channelId].total += v.viewCount;
+        stats[v.channelId].count += 1;
+    });
+    
+    const averages: Record<string, number> = {};
+    Object.keys(stats).forEach(id => {
+        averages[id] = stats[id].count > 0 ? stats[id].total / stats[id].count : 0;
+    });
+    return averages;
+  }, [videos]);
 
   const sortedVideos = [...videos].sort((a, b) => {
     switch (sortOption) {
@@ -22,11 +41,21 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
       case SortOption.COMMENTS_ASC: return a.commentCount - b.commentCount;
       case SortOption.DATE_DESC: return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
       case SortOption.DATE_ASC: return new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime();
+      case SortOption.PERFORMANCE_DESC: {
+          const perfA = (channelAverages[a.channelId] && channelAverages[a.channelId] > 0) ? a.viewCount / channelAverages[a.channelId] : 0;
+          const perfB = (channelAverages[b.channelId] && channelAverages[b.channelId] > 0) ? b.viewCount / channelAverages[b.channelId] : 0;
+          return perfB - perfA;
+      }
+      case SortOption.PERFORMANCE_ASC: {
+          const perfA = (channelAverages[a.channelId] && channelAverages[a.channelId] > 0) ? a.viewCount / channelAverages[a.channelId] : 0;
+          const perfB = (channelAverages[b.channelId] && channelAverages[b.channelId] > 0) ? b.viewCount / channelAverages[b.channelId] : 0;
+          return perfA - perfB;
+      }
       default: return 0;
     }
   });
 
-  const handleSortClick = (category: 'VIEWS' | 'LIKES' | 'COMMENTS' | 'DATE') => {
+  const handleSortClick = (category: 'VIEWS' | 'LIKES' | 'COMMENTS' | 'DATE' | 'PERFORMANCE') => {
     const desc = SortOption[`${category}_DESC` as keyof typeof SortOption];
     const asc = SortOption[`${category}_ASC` as keyof typeof SortOption];
     if (sortOption === desc) {
@@ -36,7 +65,7 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
     }
   };
 
-  const SortButton = ({ label, category }: { label: string; category: 'VIEWS' | 'LIKES' | 'COMMENTS' | 'DATE' }) => {
+  const SortButton = ({ label, category }: { label: string; category: 'VIEWS' | 'LIKES' | 'COMMENTS' | 'DATE' | 'PERFORMANCE' }) => {
     const isSelected = sortOption.includes(category);
     const isAsc = sortOption.includes('ASC');
     return (
@@ -56,6 +85,13 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
   const getEngagementRate = (video: Video) => {
     if (video.viewCount === 0) return 0;
     return ((video.likeCount + video.commentCount) / video.viewCount) * 100;
+  };
+
+  const getPerformance = (video: Video) => {
+      const avg = channelAverages[video.channelId];
+      if (!avg || avg === 0) return { ratio: 0, label: '-' };
+      const ratio = video.viewCount / avg;
+      return { ratio, label: `${ratio.toFixed(1)}x` };
   };
 
   const renderRank = (index: number) => {
@@ -90,6 +126,7 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
             <SortButton label="좋아요" category="LIKES" />
             <SortButton label="댓글" category="COMMENTS" />
             <SortButton label="날짜" category="DATE" />
+            <SortButton label="성과도" category="PERFORMANCE" />
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -97,14 +134,31 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
           <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
             <tr>
               <th className="px-4 py-3 font-semibold text-center w-12">#</th>
-              <th className="px-6 py-3 font-semibold w-[50%]">영상</th>
+              <th className="px-6 py-3 font-semibold w-[40%]">영상</th>
               <th className="px-6 py-3 font-semibold text-right">조회수</th>
+              <th className="px-6 py-3 font-semibold text-right">성과도</th>
               <th className="px-6 py-3 font-semibold text-right">참여율</th>
+              <th className="px-4 py-3 font-semibold text-center w-12"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {sortedVideos.map((video, index) => {
               const engRate = getEngagementRate(video);
+              const { ratio, label } = getPerformance(video);
+              
+              let perfColor = 'text-slate-500';
+              let PerfIcon = Minus;
+              if (ratio >= 1.5) {
+                  perfColor = 'text-green-600';
+                  PerfIcon = TrendingUp;
+              } else if (ratio >= 1.1) {
+                  perfColor = 'text-green-500';
+                  PerfIcon = TrendingUp;
+              } else if (ratio < 0.7) {
+                  perfColor = 'text-red-500';
+                  PerfIcon = TrendingDown;
+              }
+
               return (
               <tr key={video.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-4 py-4 text-center">
@@ -146,6 +200,15 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
                   {video.viewCount.toLocaleString()}
                 </td>
                 <td className="px-6 py-4 text-right">
+                    <div className={`flex items-center justify-end gap-1 font-bold text-sm ${perfColor}`}>
+                        {ratio !== 0 && <PerfIcon size={14} />}
+                        {label}
+                    </div>
+                    <div className="text-[10px] text-slate-400 text-right">
+                        평균 {channelAverages[video.channelId] ? Math.round(channelAverages[video.channelId]).toLocaleString() : 0}
+                    </div>
+                </td>
+                <td className="px-6 py-4 text-right">
                     <div className="flex flex-col items-end gap-1">
                         <span className={`font-bold text-sm ${engRate > 5 ? 'text-green-600' : engRate > 2 ? 'text-blue-600' : 'text-slate-600'}`}>
                             {engRate.toFixed(1)}%
@@ -155,6 +218,15 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
                             <span className="flex items-center gap-0.5"><MessageCircle size={10} /> {video.commentCount.toLocaleString()}</span>
                         </div>
                     </div>
+                </td>
+                <td className="px-4 py-4 text-center">
+                    <button 
+                        onClick={() => onHideVideo(video.id)}
+                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                        title="목록에서 숨기기"
+                    >
+                        <EyeOff size={16} />
+                    </button>
                 </td>
               </tr>
             )})}

@@ -39,6 +39,7 @@ export interface AppState {
   isLoading: boolean;
   lastFetched: number | null;
   period: AnalysisPeriod;
+  hiddenVideoIds?: string[];
 }
 
 export enum SortOption {
@@ -49,7 +50,9 @@ export enum SortOption {
   COMMENTS_DESC = 'COMMENTS_DESC',
   COMMENTS_ASC = 'COMMENTS_ASC',
   DATE_DESC = 'DATE_DESC',
-  DATE_ASC = 'DATE_ASC'
+  DATE_ASC = 'DATE_ASC',
+  PERFORMANCE_DESC = 'PERFORMANCE_DESC',
+  PERFORMANCE_ASC = 'PERFORMANCE_ASC'
 }
 
 // --- Analytics API Types ---

@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [period, setPeriod] = useState<AnalysisPeriod>(30);
+  const [hiddenVideoIds, setHiddenVideoIds] = useState<string[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
   const [dataPeriod, setDataPeriod] = useState<AnalysisPeriod | null>(null);
@@ -68,6 +69,7 @@ const App: React.FC = () => {
     let initialChannels: Channel[] = [];
     let initialFolders: Folder[] = [];
     let initialPeriod: AnalysisPeriod = 30;
+    let initialHiddenVideoIds: string[] = [];
     let dataLoadedFromShare = false;
 
     if (savedState) {
@@ -76,6 +78,7 @@ const App: React.FC = () => {
       initialChannels = parsed.channels || [];
       initialFolders = parsed.folders || [];
       initialPeriod = parsed.period || 30;
+      initialHiddenVideoIds = parsed.hiddenVideoIds || [];
     }
 
     const params = new URLSearchParams(window.location.search);
@@ -120,6 +123,7 @@ const App: React.FC = () => {
     setChannels(initialChannels);
     setFolders(initialFolders);
     setPeriod(initialPeriod);
+    setHiddenVideoIds(initialHiddenVideoIds);
 
     if (savedVideos) {
       const parsed = JSON.parse(savedVideos);
@@ -134,8 +138,8 @@ const App: React.FC = () => {
   }, [showToast]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ apiKey, channels, folders, period }));
-  }, [apiKey, channels, folders, period]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ apiKey, channels, folders, period, hiddenVideoIds }));
+  }, [apiKey, channels, folders, period, hiddenVideoIds]);
 
   const getShareLink = useCallback(() => {
      try {
@@ -261,6 +265,8 @@ const App: React.FC = () => {
             folders={folders} isLoading={isLoading}
             period={period} setPeriod={setPeriod}
             apiKey={apiKey} setApiKey={setApiKey}
+            hiddenVideoIds={hiddenVideoIds}
+            setHiddenVideoIds={setHiddenVideoIds}
         />
       </main>
       
@@ -285,7 +291,32 @@ const App: React.FC = () => {
                           />
                       </div>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-2">변경 시 자동 저장 및 즉시 반영됩니다.</p>
+                  
+                  {hiddenVideoIds.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-slate-100">
+                          <div className="flex justify-between items-center mb-2">
+                              <span className="text-xs font-bold text-slate-700">숨긴 영상 관리</span>
+                              <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{hiddenVideoIds.length}개 숨김</span>
+                          </div>
+                          <button
+                              onClick={() => {
+                                  setHiddenVideoIds([]);
+                                  showToast('숨긴 영상이 모두 복구되었습니다.', 'success');
+                              }}
+                              className="w-full bg-slate-100 text-slate-600 py-2 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors"
+                          >
+                              숨김 해제 및 초기화
+                          </button>
+                      </div>
+                  )}
+
+                  <p className="text-[10px] text-slate-400 mt-4">변경 시 자동 저장 및 즉시 반영됩니다.</p>
+                  <button 
+                      onClick={() => setIsSettingsOpen(false)}
+                      className="w-full mt-3 bg-slate-900 text-white py-2 rounded-lg text-xs font-bold hover:bg-black transition-colors"
+                  >
+                      확인
+                  </button>
               </div>
           )}
           <button 
