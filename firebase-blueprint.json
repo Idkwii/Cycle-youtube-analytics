@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "Dashboard": {
+      "title": "Dashboard",
+      "description": "A YouTube analytics dashboard containing custom folders and channels",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the dashboard"
+        },
+        "apiKey": {
+          "type": "string",
+          "description": "YouTube API key for the dashboard"
+        },
+        "folders": {
+          "type": "array",
+          "description": "Custom folders created in the dashboard"
+        },
+        "channels": {
+          "type": "array",
+          "description": "YouTube channels belonging to the dashboard"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the dashboard was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the dashboard was last updated"
+        }
+      },
+      "required": ["folders", "channels"]
+    }
+  },
+  "firestore": {
+    "/dashboards/{dashboardId}": {
+      "schema": "Dashboard",
+      "description": "Shared dashboards mapped by unique IDs"
+    }
+  }
+}

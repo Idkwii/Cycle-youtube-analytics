@@ -17,8 +17,10 @@ interface SidebarProps {
   deleteChannel: (id: string) => void;
   moveChannel: (channelId: string, folderId: string) => void;
   refreshData: () => void;
-  getShareLink: () => string;
+  getShareLink: () => Promise<string>;
   showToast: (msg: string, type?: 'success' | 'error') => void;
+  dashboardId: string | null;
+  isSyncing: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -35,13 +37,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   moveChannel,
   refreshData,
   getShareLink,
-  showToast
+  showToast,
+  dashboardId,
+  isSyncing
 }) => {
   const [newFolderInput, setNewFolderInput] = useState('');
   const [newChannelInput, setNewChannelInput] = useState('');
   const [isAddingChannel, setIsAddingChannel] = useState(false);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
+  const [shareUrlToShow, setShareUrlToShow] = useState<string | null>(null);
 
   const handleAddFolder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,26 +72,17 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const handleShareConfig = async () => {
     setIsSharing(true);
-    const longUrl = getShareLink();
-    
     try {
-        await navigator.clipboard.writeText(longUrl);
-    } catch(e) { /* ignore */ }
+      const longUrl = await getShareLink();
+      
+      // Always open manual copy modal as a bulletproof fallback for clipboard iframe restrictions
+      setShareUrlToShow(longUrl);
 
-    try {
-        const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
-        if (response.ok) {
-            const shortUrl = await response.text();
-            await navigator.clipboard.writeText(shortUrl);
-            showToast("단축 URL이 복사되었습니다!", 'success');
-            setIsSharing(false);
-            return;
-        }
-    } catch (e) {
-        console.warn("URL shortening failed", e);
+      await navigator.clipboard.writeText(longUrl);
+      showToast("공유 링크가 클립보드에 복사되었습니다!", 'success');
+    } catch(e) {
+      showToast("공유 링크가 생성되었습니다. 아래 창에서 직접 복사해주세요.", 'error');
     }
-
-    showToast("공유 링크가 복사되었습니다! (접속 시 주소는 자동으로 숨겨집니다)", 'success');
     setIsSharing(false);
   };
 
@@ -116,6 +112,16 @@ const Sidebar: React.FC<SidebarProps> = ({
           <Youtube className="text-red-600" size={32} />
           <h1 className="font-bold text-lg tracking-tight text-slate-900 leading-tight">Cycle Youtube<br/>Analytics</h1>
         </div>
+
+        {dashboardId && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-semibold border border-emerald-200 mb-4 shadow-[0_1px_2px_rgba(16,185,129,0.05)]">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <span className="truncate">실시간 자동 동기화 켜짐</span>
+          </div>
+        )}
         
         <button
             onClick={refreshData}
@@ -258,6 +264,47 @@ const Sidebar: React.FC<SidebarProps> = ({
               </a>
           </div>
       </div>
+
+      {shareUrlToShow && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl relative border border-slate-100">
+            <h3 className="font-bold text-slate-900 mb-2 text-base flex items-center gap-1.5">🔗 대시보드 공유 링크</h3>
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              현재 등록된 채널과 폴더 정보가 포함된 링크입니다. 이 링크로 접속하면 다른 기기나 팀원도 동일한 레이아웃을 그대로 볼 수 있습니다.
+            </p>
+            <div className="flex gap-2 mb-4">
+              <input 
+                type="text" 
+                readOnly 
+                value={shareUrlToShow} 
+                className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 text-slate-600 outline-none select-all"
+                onClick={(e) => (e.currentTarget as HTMLInputElement).select()}
+              />
+              <button 
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(shareUrlToShow);
+                    showToast("클립보드에 복사되었습니다!", "success");
+                  } catch (e) {
+                    showToast("복사에 실패했습니다. 주소를 직접 드래그하여 복사해 주세요.", "error");
+                  }
+                }}
+                className="px-4 py-2 bg-slate-950 hover:bg-black text-white rounded-lg text-xs font-bold transition-colors shrink-0"
+              >
+                복사
+              </button>
+            </div>
+            <div className="flex justify-end">
+              <button 
+                onClick={() => setShareUrlToShow(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -7,8 +7,30 @@ import { fetchChannelInfo, fetchRecentVideos } from './services/youtubeService';
 import LZString from 'lz-string';
 import { CheckCircle2, AlertCircle, Settings } from 'lucide-react';
 
+// Firebase core configuration
+import { collection, doc, setDoc, onSnapshot, serverTimestamp, getDoc } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from './services/firebase';
+
 const STORAGE_KEY = 'yt_dashboard_state';
 const VIDEO_CACHE_KEY = 'yt_dashboard_videos';
+
+// Deterministically generate a safe, unique Firestore document ID from share string
+const getDeterministicId = async (shareData: string): Promise<string> => {
+  try {
+    const msgBuffer = new TextEncoder().encode(shareData);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return `hash-${hashHex.substring(0, 50)}`;
+  } catch (err) {
+    let hash = 0;
+    for (let i = 0; i < shareData.length; i++) {
+      hash = (hash << 5) - hash + shareData.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return `fb-${Math.abs(hash).toString(36)}-${shareData.length}`;
+  }
+};
 
 /**
  * [중요] 여기에 본인의 YouTube Data API v3 키를 입력하세요.
@@ -26,6 +48,16 @@ const getInitialApiKey = () => {
   }
 };
 
+const getSavedState = () => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch (e) {
+    console.error("Failed to load saved state", e);
+  }
+  return null;
+};
+
 interface Toast {
   id: number;
   message: string;
@@ -33,16 +65,27 @@ interface Toast {
 }
 
 const App: React.FC = () => {
-  const [apiKey, setApiKey] = useState<string>(getInitialApiKey());
+  const savedState = getSavedState();
   
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [period, setPeriod] = useState<AnalysisPeriod>(30);
-  const [hiddenVideoIds, setHiddenVideoIds] = useState<string[]>([]);
+  const [apiKey, setApiKey] = useState<string>(() => {
+    const initial = getInitialApiKey();
+    return (CONST_API_KEY || savedState?.apiKey || initial);
+  });
+  
+  const [channels, setChannels] = useState<Channel[]>(savedState?.channels || []);
+  const [folders, setFolders] = useState<Folder[]>(savedState?.folders || []);
+  const [period, setPeriod] = useState<AnalysisPeriod>(savedState?.period || 30);
+  const [hiddenVideoIds, setHiddenVideoIds] = useState<string[]>(savedState?.hiddenVideoIds || []);
   const [videos, setVideos] = useState<Video[]>([]);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
   const [dataPeriod, setDataPeriod] = useState<AnalysisPeriod | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [forceRefreshNext, setForceRefreshNext] = useState<boolean>(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [dashboardId, setDashboardId] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  
+  const [isInitialized, setIsInitialized] = useState(false);
   
   // Navigation State
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -60,28 +103,17 @@ const App: React.FC = () => {
     }, 3000);
   }, []);
 
-  // 1. 초기화 Logic
+  // 1. 초기화 Logic (Share Link & Video Cache)
   useEffect(() => {
-    const savedState = localStorage.getItem(STORAGE_KEY);
     const savedVideos = localStorage.getItem(VIDEO_CACHE_KEY);
-
-    let initialApiKey = getInitialApiKey();
-    let initialChannels: Channel[] = [];
-    let initialFolders: Folder[] = [];
-    let initialPeriod: AnalysisPeriod = 30;
-    let initialHiddenVideoIds: string[] = [];
     let dataLoadedFromShare = false;
 
-    if (savedState) {
-      const parsed = JSON.parse(savedState);
-      initialApiKey = CONST_API_KEY || parsed.apiKey || initialApiKey;
-      initialChannels = parsed.channels || [];
-      initialFolders = parsed.folders || [];
-      initialPeriod = parsed.period || 30;
-      initialHiddenVideoIds = parsed.hiddenVideoIds || [];
+    const params = new URLSearchParams(window.location.search);
+    const dashboardParam = params.get('dashboardId');
+    if (dashboardParam) {
+      setDashboardId(dashboardParam);
     }
 
-    const params = new URLSearchParams(window.location.search);
     const shareData = params.get('share');
     if (shareData) {
       try {
@@ -93,44 +125,101 @@ const App: React.FC = () => {
         }
         if (jsonStr) {
             const data = JSON.parse(jsonStr);
+            let parsedFolders: Folder[] = [];
+            let parsedChannels: Channel[] = [];
+            let parsedApiKey = '';
+
             if (data.c && Array.isArray(data.c)) {
-                if (data.k && !CONST_API_KEY) initialApiKey = data.k;
-                if (data.f) {
-                    initialFolders = data.f.map((f: any[]) => ({ id: f[0], name: f[1] }));
+                if (data.k && !CONST_API_KEY) {
+                    parsedApiKey = data.k;
+                    setApiKey(data.k);
                 }
-                initialChannels = data.c.map((c: any[]) => ({
+                if (data.f) {
+                    parsedFolders = data.f.map((f: any[]) => ({ id: f[0], name: f[1] }));
+                    setFolders(parsedFolders);
+                }
+                parsedChannels = data.c.map((c: any[]) => ({
                     id: c[0],
                     folderId: c[1],
                     title: c[2],
-                    thumbnail: c[3] || '', // 썸네일 복원
+                    thumbnail: c[3] || '',
                     uploadsPlaylistId: c[0].replace(/^UC/, 'UU'),
                     handle: ''
                 }));
+                setChannels(parsedChannels);
             } else {
-                if (data.apiKey && !CONST_API_KEY) initialApiKey = data.apiKey;
-                if (data.channels) initialChannels = data.channels;
-                if (data.folders) initialFolders = data.folders;
+                if (data.apiKey && !CONST_API_KEY) {
+                    parsedApiKey = data.apiKey;
+                    setApiKey(data.apiKey);
+                }
+                if (data.channels) {
+                    parsedChannels = data.channels;
+                    setChannels(data.channels);
+                }
+                if (data.folders) {
+                    parsedFolders = data.folders;
+                    setFolders(data.folders);
+                }
             }
             dataLoadedFromShare = true;
+            setForceRefreshNext(true);
+
+            // Automatically migrate and sync the old share link using active Firestore!
+            const autoMigrateToFirestore = async () => {
+                try {
+                    // Generate a deterministic dashboard ID based on the shared content
+                    const deterministicId = await getDeterministicId(shareData);
+                    const docRef = doc(db, 'dashboards', deterministicId);
+                    
+                    // See if this synced dashboard already exists
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        // Already exists, just hook into it! (onSnapshot will load the newest data automatically)
+                        setDashboardId(deterministicId);
+                        const newUrl = `${window.location.pathname}?dashboardId=${deterministicId}`;
+                        window.history.replaceState({}, '', newUrl);
+                        setTimeout(() => showToast("실시간 공유 대시보드에 연결되었습니다!", 'success'), 500);
+                    } else {
+                        // First-time load: bootstrap active Firestore document with our initial data
+                        await setDoc(docRef, {
+                            id: deterministicId,
+                            folders: parsedFolders,
+                            channels: parsedChannels,
+                            apiKey: parsedApiKey || '',
+                            createdAt: serverTimestamp(),
+                            updatedAt: serverTimestamp()
+                        });
+                        setDashboardId(deterministicId);
+                        const newUrl = `${window.location.pathname}?dashboardId=${deterministicId}`;
+                        window.history.replaceState({}, '', newUrl);
+                        setTimeout(() => showToast("이전 공유 링크를 실시간 자동 동기화 대시보드로 성공적으로 전환했습니다!", 'success'), 500);
+                    }
+                } catch (migrateErr) {
+                    console.error("Failed to migrate share URL to Firestore", migrateErr);
+                }
+            };
+            autoMigrateToFirestore();
+        } else {
+            window.history.replaceState({}, '', window.location.pathname);
         }
-        window.history.replaceState({}, '', window.location.pathname);
       } catch (e) {
         console.error("Failed to parse shared data", e);
+        window.history.replaceState({}, '', window.location.pathname);
       }
     }
 
-    setApiKey(initialApiKey);
-    setChannels(initialChannels);
-    setFolders(initialFolders);
-    setPeriod(initialPeriod);
-    setHiddenVideoIds(initialHiddenVideoIds);
-
     if (savedVideos) {
-      const parsed = JSON.parse(savedVideos);
-      setVideos(parsed.data || []);
-      setLastFetched(parsed.timestamp || null);
-      setDataPeriod(parsed.period || null);
+      try {
+        const parsed = JSON.parse(savedVideos);
+        setVideos(parsed.data || []);
+        setLastFetched(parsed.timestamp || null);
+        setDataPeriod(parsed.period || null);
+      } catch (e) {
+        console.error("Failed to load saved videos", e);
+      }
     }
+
+    setIsInitialized(true);
 
     if (dataLoadedFromShare) {
         setTimeout(() => showToast("공유된 대시보드 설정을 불러왔습니다.", 'success'), 500);
@@ -138,26 +227,86 @@ const App: React.FC = () => {
   }, [showToast]);
 
   useEffect(() => {
+    if (!isInitialized) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ apiKey, channels, folders, period, hiddenVideoIds }));
-  }, [apiKey, channels, folders, period, hiddenVideoIds]);
+  }, [apiKey, channels, folders, period, hiddenVideoIds, isInitialized]);
 
-  const getShareLink = useCallback(() => {
-     try {
-        const minifiedData: any = {
-            f: folders.map(f => [f.id, f.name]),
-            // ID, FolderID, Title, Thumbnail 순서로 저장
-            c: channels.map(c => [c.id, c.folderId, c.title, c.thumbnail])
-        };
-        if (!CONST_API_KEY && apiKey) {
-            minifiedData.k = apiKey;
+  // Real-time synchronization listener
+  useEffect(() => {
+    if (!dashboardId) return;
+
+    setIsSyncing(true);
+    const docRef = doc(db, 'dashboards', dashboardId);
+    
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      setIsSyncing(false);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.folders) {
+          setFolders(prev => {
+            const strPrev = JSON.stringify(prev);
+            const strNew = JSON.stringify(data.folders);
+            return strPrev !== strNew ? data.folders : prev;
+          });
         }
-        const jsonStr = JSON.stringify(minifiedData);
-        const compressed = LZString.compressToEncodedURIComponent(jsonStr);
-        return `${window.location.origin}${window.location.pathname}?share=${compressed}`;
-    } catch (e) {
+        if (data.channels) {
+          setChannels(prev => {
+            const strPrev = JSON.stringify(prev);
+            const strNew = JSON.stringify(data.channels);
+            return strPrev !== strNew ? data.channels : prev;
+          });
+        }
+        if (data.apiKey && !CONST_API_KEY) {
+          setApiKey(prev => prev !== data.apiKey ? data.apiKey : prev);
+        }
+      }
+    }, (error) => {
+      setIsSyncing(false);
+      handleFirestoreError(error, OperationType.GET, `dashboards/${dashboardId}`);
+    });
+
+    return () => unsubscribe();
+  }, [dashboardId]);
+
+  const getShareLink = useCallback(async () => {
+     try {
+        if (dashboardId) {
+            let origin = window.location.origin;
+            if (origin.includes('ais-dev-')) {
+                origin = origin.replace('ais-dev-', 'ais-pre-');
+            }
+            return `${origin}${window.location.pathname}?dashboardId=${dashboardId}`;
+        }
+        
+        // No dashboard ID yet - create one in Firestore and sync existing data!
+        const newDocRef = doc(collection(db, 'dashboards'));
+        const newId = newDocRef.id;
+        
+        const payload = {
+            id: newId,
+            folders: folders,
+            channels: channels,
+            apiKey: apiKey || '',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        };
+        
+        await setDoc(newDocRef, payload);
+        setDashboardId(newId);
+        
+        const newUrl = `${window.location.pathname}?dashboardId=${newId}`;
+        window.history.replaceState({}, '', newUrl);
+        
+        let origin = window.location.origin;
+        if (origin.includes('ais-dev-')) {
+            origin = origin.replace('ais-dev-', 'ais-pre-');
+        }
+        return `${origin}${newUrl}`;
+    } catch (e: any) {
+        showToast("공유 링크 생성 중 오류가 발생했습니다: " + e.message, 'error');
         return window.location.href;
     }
-  }, [folders, channels, apiKey]);
+  }, [folders, channels, apiKey, dashboardId, showToast]);
 
   useEffect(() => {
     if (videos.length > 0) {
@@ -175,6 +324,7 @@ const App: React.FC = () => {
     if (!force && !customPeriod && lastFetched && (now - lastFetched < 30 * 60 * 1000)) return;
     
     setIsLoading(true);
+    setApiError(null);
     try {
       const targetPeriod = customPeriod || period;
       const newVideos = await fetchRecentVideos(channels, apiKey, targetPeriod);
@@ -183,6 +333,7 @@ const App: React.FC = () => {
       setLastFetched(Date.now());
       showToast("데이터 업데이트 완료", 'success');
     } catch (error: any) {
+      setApiError(error.message);
       showToast("데이터 업데이트 실패: " + error.message, 'error');
     } finally {
       setIsLoading(false);
@@ -191,14 +342,35 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (apiKey && channels.length > 0) {
-      if (dataPeriod !== period || !lastFetched) {
-        refreshData(period);
+      if (dataPeriod !== period || !lastFetched || forceRefreshNext) {
+        refreshData(period, forceRefreshNext);
+        if (forceRefreshNext) {
+          setForceRefreshNext(false);
+        }
       }
     }
-  }, [apiKey, channels, period, dataPeriod, lastFetched, refreshData]);
+  }, [apiKey, channels, period, dataPeriod, lastFetched, refreshData, forceRefreshNext]);
+
+  const syncToFirestore = useCallback(async (newFolders: Folder[], newChannels: Channel[]) => {
+    if (!dashboardId) return;
+    try {
+      const docRef = doc(db, 'dashboards', dashboardId);
+      await setDoc(docRef, {
+        folders: newFolders,
+        channels: newChannels,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (error: any) {
+      handleFirestoreError(error, OperationType.UPDATE, `dashboards/${dashboardId}`);
+    }
+  }, [dashboardId]);
 
   const addFolder = (name: string) => {
-    setFolders([...folders, { id: `f-${Date.now()}`, name }]);
+    const nextFolders = [...folders, { id: `f-${Date.now()}`, name }];
+    setFolders(nextFolders);
+    if (dashboardId) {
+      syncToFirestore(nextFolders, channels);
+    }
   };
 
   const addChannel = async (identifier: string, folderId: string) => {
@@ -215,16 +387,23 @@ const App: React.FC = () => {
         return;
       }
       let targetId = folderId || (folders.length > 0 ? folders[0].id : null);
+      let nextFolders = [...folders];
       if (!targetId) {
           const newF = { id: `f-${Date.now()}`, name: '기본 폴더' };
-          setFolders([newF]);
+          nextFolders = [newF];
+          setFolders(nextFolders);
           targetId = newF.id;
       }
       const newChannel = { ...info, folderId: targetId };
-      setChannels(prev => [...prev, newChannel]);
+      const nextChannels = [...channels, newChannel];
+      setChannels(nextChannels);
+      
       const newV = await fetchRecentVideos([newChannel], apiKey, period);
       setVideos(prev => [...prev, ...newV]);
       showToast(`'${info.title}' 채널이 추가되었습니다.`, 'success');
+      if (dashboardId) {
+        await syncToFirestore(nextFolders, nextChannels);
+      }
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -233,13 +412,21 @@ const App: React.FC = () => {
   };
 
   const deleteChannel = (id: string) => {
-    setChannels(channels.filter(c => c.id !== id));
+    const nextChannels = channels.filter(c => c.id !== id);
+    setChannels(nextChannels);
     setVideos(videos.filter(v => v.channelId !== id));
     showToast("채널이 삭제되었습니다.", 'success');
+    if (dashboardId) {
+      syncToFirestore(folders, nextChannels);
+    }
   };
 
   const moveChannel = (channelId: string, targetFolderId: string) => {
-    setChannels(prev => prev.map(c => c.id === channelId ? { ...c, folderId: targetFolderId } : c));
+    const nextChannels = channels.map(c => c.id === channelId ? { ...c, folderId: targetFolderId } : c);
+    setChannels(nextChannels);
+    if (dashboardId) {
+      syncToFirestore(folders, nextChannels);
+    }
   };
 
   return (
@@ -256,6 +443,8 @@ const App: React.FC = () => {
         refreshData={() => refreshData(undefined, true)}
         getShareLink={getShareLink}
         showToast={showToast}
+        dashboardId={dashboardId}
+        isSyncing={isSyncing}
       />
       <main className="flex-1 ml-80 overflow-y-auto">
         <Dashboard 
@@ -267,6 +456,7 @@ const App: React.FC = () => {
             apiKey={apiKey} setApiKey={setApiKey}
             hiddenVideoIds={hiddenVideoIds}
             setHiddenVideoIds={setHiddenVideoIds}
+            apiError={apiError}
         />
       </main>
       

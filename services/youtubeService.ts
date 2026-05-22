@@ -123,7 +123,12 @@ export const fetchRecentVideos = async (channels: Channel[], apiKey: string, day
             }
 
             const res = await fetch(url);
-            if (!res.ok) break; // Fail silently for individual channel errors to keep others working
+            if (!res.ok) {
+                if (res.status === 403 || res.status === 401 || res.status === 400) {
+                    await handleApiError(res);
+                }
+                break; // Fail silently for individual channel errors to keep others working
+            }
             const data = await res.json();
             
             if (!data.items || data.items.length === 0) break;

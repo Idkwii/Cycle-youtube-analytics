@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Video, SortOption, Folder, Channel, AnalysisPeriod } from '../types';
 import VideoTable from './VideoTable';
 import ChannelStats from './ChannelStats';
-import { Eye, ThumbsUp, MessageCircle, Film, Settings, PlusCircle, HelpCircle } from 'lucide-react';
+import { Eye, ThumbsUp, MessageCircle, Film, Settings, PlusCircle, HelpCircle, AlertCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 interface DashboardProps {
@@ -19,6 +19,7 @@ interface DashboardProps {
   setApiKey: (key: string) => void;
   hiddenVideoIds: string[];
   setHiddenVideoIds: React.Dispatch<React.SetStateAction<string[]>>;
+  apiError?: string | null;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
@@ -33,7 +34,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     apiKey,
     setApiKey,
     hiddenVideoIds,
-    setHiddenVideoIds
+    setHiddenVideoIds,
+    apiError
 }) => {
   const [sortOption, setSortOption] = useState<SortOption>(SortOption.VIEWS_DESC);
 
@@ -155,6 +157,16 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
         </div>
       </div>
+
+      {apiError && (
+        <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 flex gap-3 text-sm">
+            <AlertCircle className="text-red-600 flex-shrink-0" size={20} />
+            <div className="space-y-1">
+                <p className="font-bold">⚠️ YouTube API 연결 오류</p>
+                <p className="text-xs text-red-700 leading-relaxed whitespace-pre-line">{apiError}</p>
+            </div>
+        </div>
+      )}
 
       {/* vidIQ Style Quick Stats Bar - filteredVideos(롱폼만) 전달 */}
       <ChannelStats videos={filteredVideos} channel={currentChannel} />
