@@ -28,18 +28,9 @@ const getOutlierBadges = (video: Video, avgChannelViews: number): OutlierBadge[]
   const lpv = (video.likeCount / video.viewCount) * 1000;
   const perf = avgChannelViews > 0 ? video.viewCount / avgChannelViews : 0;
 
-  // --- 댓글 이상치 규칙 (우선순위: 1 -> 2 -> 3, 최대 1개) ---
-  if (video.viewCount >= 5000 && cpv >= 20) {
-    // 1. 💬 댓글이벤트?: 조회수 5,000 이상 && cpv >= 20 -> 보라색
-    badges.push({
-      id: 'comment-event',
-      type: 'comment',
-      label: `💬 댓글이벤트? ${cpv.toFixed(1)}/1k`,
-      tooltip: `댓글 ${cpv.toFixed(1)}개/1천뷰 (정상 3~10). 자료나눔 댓글 이벤트 의심`,
-      badgeStyle: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
-    });
-  } else if (video.viewCount >= 30000 && cpv < 3 && perf >= 2.5) {
-    // 2. 📢 광고의심: 조회수 30,000 이상 && cpv < 3 && perf >= 2.5 -> 빨간색
+  // --- 댓글 이상치 규칙 (우선순위: 광고의심 -> 댓글저조, 최대 1개) ---
+  if (video.viewCount >= 30000 && cpv < 3 && perf >= 2.5) {
+    // 1. 📢 광고의심: 조회수 30,000 이상 && cpv < 3 && perf >= 2.5 -> 빨간색
     badges.push({
       id: 'ad-suspect',
       type: 'comment',
@@ -48,7 +39,7 @@ const getOutlierBadges = (video: Video, avgChannelViews: number): OutlierBadge[]
       badgeStyle: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
     });
   } else if (video.viewCount >= 50000 && cpv < 1.5) {
-    // 3. 🔕 댓글저조: 조회수 50,000 이상 && cpv < 1.5 (2번 미해당 시) -> 주황색
+    // 2. 🔕 댓글저조: 조회수 50,000 이상 && cpv < 1.5 (광고의심 미해당 시) -> 주황색
     badges.push({
       id: 'comment-low',
       type: 'comment',
