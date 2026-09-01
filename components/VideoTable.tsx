@@ -1,7 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { Video, SortOption, AnalysisPeriod } from '../types';
-import { ExternalLink, ThumbsUp, MessageCircle, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Minus, EyeOff } from 'lucide-react';
+import { ExternalLink, ThumbsUp, MessageCircle, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Minus, EyeOff, Info } from 'lucide-react';
 
 interface VideoTableProps {
   videos: Video[];
@@ -10,6 +10,86 @@ interface VideoTableProps {
   period: AnalysisPeriod;
   onHideVideo: (id: string) => void;
 }
+
+interface OutlierBadge {
+  id: string;
+  type: 'comment' | 'like';
+  label: string;
+  tooltip: string;
+  badgeStyle: string;
+}
+
+// 이상치 뱃지 계산 함수
+const getOutlierBadges = (video: Video, avgChannelViews: number): OutlierBadge[] => {
+  const badges: OutlierBadge[] = [];
+  if (!video.viewCount || video.viewCount <= 0) return badges;
+
+  const cpv = (video.commentCount / video.viewCount) * 1000;
+  const lpv = (video.likeCount / video.viewCount) * 1000;
+  const perf = avgChannelViews > 0 ? video.viewCount / avgChannelViews : 0;
+
+  // --- 댓글 이상치 규칙 (우선순위: 1 -> 2 -> 3, 최대 1개) ---
+  if (video.viewCount >= 5000 && cpv >= 20) {
+    // 1. 💬 댓글이벤트?: 조회수 5,000 이상 && cpv >= 20 -> 보라색
+    badges.push({
+      id: 'comment-event',
+      type: 'comment',
+      label: `💬 댓글이벤트? ${cpv.toFixed(1)}/1k`,
+      tooltip: `댓글 ${cpv.toFixed(1)}개/1천뷰 (정상 3~10). 자료나눔 댓글 이벤트 의심`,
+      badgeStyle: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+    });
+  } else if (video.viewCount >= 30000 && cpv < 3 && perf >= 2.5) {
+    // 2. 📢 광고의심: 조회수 30,000 이상 && cpv < 3 && perf >= 2.5 -> 빨간색
+    badges.push({
+      id: 'ad-suspect',
+      type: 'comment',
+      label: `📢 광고의심 ${cpv.toFixed(1)}/1k`,
+      tooltip: `댓글 ${cpv.toFixed(1)}개/1천뷰 (정상 3~10). 성과도 ${perf.toFixed(1)}x인데 댓글이 적어 유료 트래픽 의심`,
+      badgeStyle: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+    });
+  } else if (video.viewCount >= 50000 && cpv < 1.5) {
+    // 3. 🔕 댓글저조: 조회수 50,000 이상 && cpv < 1.5 (2번 미해당 시) -> 주황색
+    badges.push({
+      id: 'comment-low',
+      type: 'comment',
+      label: `🔕 댓글저조 ${cpv.toFixed(1)}/1k`,
+      tooltip: `댓글 ${cpv.toFixed(1)}개/1천뷰 (정상 3~10). 조회수 대비 댓글 참여 저조`,
+      badgeStyle: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+    });
+  }
+
+  // --- 좋아요 이상치 규칙 (우선순위: 4 -> 5 -> 6, 최대 1개) ---
+  if (video.likeCount > 0 && video.viewCount >= 5000 && lpv >= 60) {
+    // 4. 👍 좋아요과다: 좋아요 공개 && 조회수 5,000 이상 && lpv >= 60 -> 파란색
+    badges.push({
+      id: 'like-high',
+      type: 'like',
+      label: `👍 좋아요과다 ${lpv.toFixed(1)}/1k`,
+      tooltip: `좋아요 ${lpv.toFixed(1)}개/1천뷰 (정상 10~31). 조회수 대비 좋아요 비율 매우 높음`,
+      badgeStyle: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+    });
+  } else if (video.likeCount > 0 && video.viewCount >= 10000 && lpv < 4) {
+    // 5. 👎 좋아요저조: 좋아요 공개 && 조회수 10,000 이상 && lpv < 4 -> 회색
+    badges.push({
+      id: 'like-low',
+      type: 'like',
+      label: `👎 좋아요저조 ${lpv.toFixed(1)}/1k`,
+      tooltip: `좋아요 ${lpv.toFixed(1)}개/1천뷰 (정상 10~31). 조회수 대비 좋아요 비율 저조`,
+      badgeStyle: 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+    });
+  } else if (video.likeCount === 0 && video.viewCount >= 10000) {
+    // 6. 좋아요숨김: 좋아요 수 0 && 조회수 10,000 이상 -> 연회색
+    badges.push({
+      id: 'like-hidden',
+      type: 'like',
+      label: `좋아요숨김`,
+      tooltip: `조회수 ${video.viewCount.toLocaleString()}회 이상이나 좋아요 수가 비공개(0개)로 설정됨`,
+      badgeStyle: 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+    });
+  }
+
+  return badges;
+};
 
 const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOption, period, onHideVideo }) => {
 
@@ -120,7 +200,12 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-4 items-center justify-between">
-        <h3 className="font-semibold text-slate-800">최근 업로드 영상 ({period}일)</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-slate-800">최근 업로드 영상 ({period}일)</h3>
+          <span className="text-xs text-slate-400 font-normal">
+            (정상 기준: 댓글 3~10/1k, 좋아요 10~31/1k)
+          </span>
+        </div>
         <div className="flex gap-4">
             <SortButton label="조회수" category="VIEWS" />
             <SortButton label="좋아요" category="LIKES" />
@@ -134,7 +219,7 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
           <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
             <tr>
               <th className="px-4 py-3 font-semibold text-center w-12">#</th>
-              <th className="px-6 py-3 font-semibold w-[40%]">영상</th>
+              <th className="px-6 py-3 font-semibold w-[46%] min-w-[320px]">영상</th>
               <th className="px-6 py-3 font-semibold text-right">조회수</th>
               <th className="px-6 py-3 font-semibold text-right">성과도</th>
               <th className="px-6 py-3 font-semibold text-right">참여율</th>
@@ -145,6 +230,8 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
             {sortedVideos.map((video, index) => {
               const engRate = getEngagementRate(video);
               const { ratio, label } = getPerformance(video);
+              const avgViews = channelAverages[video.channelId] || 0;
+              const outlierBadges = getOutlierBadges(video, avgViews);
               
               let perfColor = 'text-slate-500';
               let PerfIcon = Minus;
@@ -165,7 +252,7 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
                     {renderRank(index)}
                 </td>
                 <td className="px-6 py-4">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3.5">
                     <div className="relative flex-shrink-0 w-24 h-14 bg-slate-200 rounded overflow-hidden group">
                       <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       {video.isShort && (
@@ -180,19 +267,40 @@ const VideoTable: React.FC<VideoTableProps> = ({ videos, sortOption, setSortOpti
                          <ExternalLink className="text-white drop-shadow-md" size={20} />
                       </a>
                     </div>
-                    <div className="min-w-0 max-w-xs">
+                    <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-xs text-slate-500">{video.channelTitle}</span>
-                            <span className="text-[10px] text-slate-400">• {new Date(video.publishedAt).toLocaleDateString()}</span>
+                            <span className="text-xs text-slate-500 font-medium truncate max-w-[160px]">{video.channelTitle}</span>
+                            <span className="text-[10px] text-slate-400 whitespace-nowrap">• {new Date(video.publishedAt).toLocaleDateString()}</span>
                         </div>
-                        <a 
-                            href={`https://www.youtube.com/watch?v=${video.id}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-sm font-medium text-slate-900 hover:text-blue-600 truncate block"
-                        >
-                            {video.title}
-                        </a>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <a 
+                                href={`https://www.youtube.com/watch?v=${video.id}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-sm font-medium text-slate-900 hover:text-blue-600 line-clamp-1 mr-0.5"
+                                title={video.title}
+                            >
+                                {video.title}
+                            </a>
+                            {outlierBadges.map((badge) => (
+                              <div key={badge.id} className="relative group/badge inline-flex items-center">
+                                <span 
+                                  className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border cursor-help whitespace-nowrap transition-all shadow-[0_1px_2px_rgba(0,0,0,0.03)] ${badge.badgeStyle}`}
+                                  title={badge.tooltip}
+                                >
+                                  {badge.label}
+                                </span>
+                                {/* Tooltip Popover */}
+                                <div className="pointer-events-none absolute bottom-full left-0 sm:left-1/2 sm:-translate-x-1/2 mb-2 hidden group-hover/badge:flex flex-col items-center z-50 w-64">
+                                  <div className="bg-slate-900/95 backdrop-blur-sm text-white text-[11px] font-normal px-2.5 py-1.5 rounded-lg shadow-xl leading-relaxed text-left whitespace-normal border border-slate-700/80">
+                                    <p className="font-semibold text-amber-300 text-[10px] mb-0.5">{badge.label}</p>
+                                    <p>{badge.tooltip}</p>
+                                  </div>
+                                  <div className="w-2 h-2 bg-slate-900 rotate-45 -mt-1 border-r border-b border-slate-700/80"></div>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
                     </div>
                   </div>
                 </td>

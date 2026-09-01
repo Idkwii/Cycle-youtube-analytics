@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Video, SortOption, Folder, Channel, AnalysisPeriod } from '../types';
+import { Video, SortOption, Folder, Channel, AnalysisPeriod, VideoTypeFilter } from '../types';
 import VideoTable from './VideoTable';
 import ChannelStats from './ChannelStats';
 import { Eye, ThumbsUp, MessageCircle, Film, Settings, PlusCircle, HelpCircle, AlertCircle } from 'lucide-react';
@@ -38,6 +38,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     apiError
 }) => {
   const [sortOption, setSortOption] = useState<SortOption>(SortOption.VIEWS_DESC);
+  const [videoType, setVideoType] = useState<VideoTypeFilter>('ALL');
 
   const scopeVideos = useMemo(() => {
     const visibleVideos = videos.filter(v => !hiddenVideoIds.includes(v.id));
@@ -52,8 +53,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [videos, selectedFolderId, selectedChannelId, channels, hiddenVideoIds]);
 
   const filteredVideos = useMemo(() => {
-    return scopeVideos.filter(v => !v.isShort);
-  }, [scopeVideos]);
+    if (videoType === 'LONG') return scopeVideos.filter(v => !v.isShort);
+    if (videoType === 'SHORT') return scopeVideos.filter(v => v.isShort);
+    return scopeVideos;
+  }, [scopeVideos, videoType]);
 
   const stats = useMemo(() => {
     const count = filteredVideos.length;
@@ -137,23 +140,43 @@ const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 relative pb-20">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
             <div>
                 <h1 className="text-2xl font-bold text-slate-900">{viewTitle} 성과 분석</h1>
-                <p className="text-slate-500 text-sm mt-1">최근 {period}일 데이터 분석 중 (롱폼 기준)</p>
+                <p className="text-slate-500 text-sm mt-1">
+                  최근 {period}일 데이터 분석 중 ({videoType === 'ALL' ? '전체' : videoType === 'LONG' ? '롱폼' : '숏폼'} 기준)
+                </p>
             </div>
-            <div className="flex items-center bg-slate-200 p-1 rounded-lg ml-2">
-                {[7, 30].map((p) => (
-                    <button
-                        key={p}
-                        onClick={() => setPeriod(p as AnalysisPeriod)}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
-                            period === p ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                    >
-                        {p}일
-                    </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* 영상 유형 필터 */}
+              <div className="flex items-center bg-slate-200 p-1 rounded-lg">
+                {(['ALL', 'LONG', 'SHORT'] as VideoTypeFilter[]).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setVideoType(type)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                      videoType === type ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {type === 'ALL' ? '전체' : type === 'LONG' ? '롱폼' : '숏폼'}
+                  </button>
                 ))}
+              </div>
+
+              {/* 기간 필터 */}
+              <div className="flex items-center bg-slate-200 p-1 rounded-lg">
+                {[7, 30].map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPeriod(p as AnalysisPeriod)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                      period === p ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {p}일
+                  </button>
+                ))}
+              </div>
             </div>
         </div>
       </div>
